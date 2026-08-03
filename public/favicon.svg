@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="14" fill="#0f172a" />
+  <!-- Flute body. -->
+  <rect x="7" y="28" width="50" height="8" rx="4" fill="#2d3a5e" />
+  <!-- Tone holes: two closed, one open — a fingering at a glance. -->
+  <circle cx="20" cy="32" r="5" fill="#e8b95c" />
+  <circle cx="33" cy="32" r="5" fill="#e8b95c" />
+  <circle cx="46" cy="32" r="5" fill="#0f172a" stroke="#9fb3c8" stroke-width="1.6" />
+  <!-- Embouchure hole. -->
+  <ellipse cx="11" cy="32" rx="2.1" ry="3" fill="#0b1020" />
+</svg>

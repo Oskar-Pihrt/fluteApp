@@ -1,0 +1,61 @@
+@import 'tailwindcss';
+
+/*
+ * FluteApp design tokens.
+ * Dark-first: the app is used in rehearsal rooms and on music stands, where a
+ * dark UI next to a bright sheet-music image is easier on the eyes.
+ */
+@theme {
+  --color-ink-950: #0b1020;
+  --color-ink-900: #0f172a;
+  --color-ink-800: #17203a;
+  --color-ink-700: #202b4a;
+  --color-ink-600: #2d3a5e;
+  --color-ink-400: #6b7aa1;
+  --color-ink-200: #b9c3dc;
+  --color-ink-50: #eef1f8;
+
+  --color-brass-500: #d9a13b;
+  --color-brass-400: #e8b95c;
+  --color-brass-300: #f2d08c;
+
+  --color-silver-400: #9fb3c8;
+
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@layer base {
+  html {
+    /* Keeps the fixed tab bar clear of the Android/iOS gesture area. */
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    background-color: var(--color-ink-950);
+    color: var(--color-ink-200);
+    font-family: var(--font-sans);
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100svh;
+    overscroll-behavior-y: none;
+  }
+
+  /* Nothing in this app should ever be text-selected by a stray long-press,
+     except actual prose. Tapping keys on the chart must feel like buttons. */
+  button,
+  [role='button'] {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  h1,
+  h2,
+  h3 {
+    color: var(--color-ink-50);
+    font-weight: 600;
+    margin: 0;
+  }
+}
