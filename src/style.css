@@ -43,11 +43,37 @@
     overscroll-behavior-y: none;
   }
 
-  /* Nothing in this app should ever be text-selected by a stray long-press,
-     except actual prose. Tapping keys on the chart must feel like buttons. */
-  button,
-  [role='button'] {
+  /* No grey flash box behind anything tapped. Set on the root so it reaches
+     links, labels and the SVG key groups too, not just <button>. */
+  html {
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Tapping must not leave a focus ring behind; keyboard focus must show one.
+     `:focus-visible` alone is not enough to arrange that: browsers apply their
+     default ring on plain `:focus` to anything focusable they don't recognise as
+     a control — an SVG group with `tabindex` is the case here — and a tap gives
+     `:focus` without `:focus-visible`. So clear `:focus` outright and put the
+     ring back only for `:focus-visible`, which pointer input never matches. */
+  :focus {
+    outline: none;
+  }
+
+  /* Colour left to currentColor deliberately: Tailwind's utility layer wins on
+     outline-color whatever we set here, and currentColor already contrasts well
+     against every surface in the app. */
+  :focus-visible {
+    outline: 2px solid;
+    outline-offset: 2px;
+  }
+
+  /* Skip the 300ms double-tap-zoom wait, and stop a stray long-press selecting
+     the label text of something that behaves like a button. */
+  button,
+  a,
+  label,
+  [role='button'],
+  [tabindex] {
     touch-action: manipulation;
   }
 
