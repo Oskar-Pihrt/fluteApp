@@ -78,13 +78,10 @@ function formatDate(timestamp: number): string {
       >
         {{ busy ? 'Adding…' : 'Add sheet' }}
       </button>
-      <!-- `capture` prefers the rear camera on phones and in the Android WebView,
-           while still allowing a file pick on desktop. -->
       <input
         ref="fileInput"
         type="file"
         accept="image/*"
-        capture="environment"
         class="hidden"
         @change="onPick"
       />
