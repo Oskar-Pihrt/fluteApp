@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Note } from 'tonal'
 import { diatonicAtStaffPosition, staffPosition } from './staff'
+import { FLUTE } from '@/instruments'
 import { noteRange } from './lookup'
 
 describe('staffPosition', () => {
@@ -66,7 +67,7 @@ describe('diatonicAtStaffPosition', () => {
 
   it('round-trips against staffPosition for every note in the flute range', () => {
     // The cheap guard against a sign or offset error between the two directions.
-    for (const { note } of noteRange({ footJoint: 'B', openHole: true })) {
+    for (const { note } of noteRange({ instrument: FLUTE, config: ['bFoot', 'openHole'] })) {
       const position = staffPosition(note)!
       const back = diatonicAtStaffPosition(position.relative)
       const parsed = Note.get(note)
@@ -78,5 +79,24 @@ describe('diatonicAtStaffPosition', () => {
     expect(diatonicAtStaffPosition(staffPosition('F#5')!.relative)).toEqual(
       diatonicAtStaffPosition(staffPosition('F5')!.relative),
     )
+  })
+})
+
+describe('staffPosition in the bass clef', () => {
+  it('places G2 on the bottom line and A3 on the top line', () => {
+    expect(staffPosition('G2', 'bass')).toMatchObject({ relative: 0, onLine: true, ledgerBelow: 0 })
+    expect(staffPosition('A3', 'bass')).toMatchObject({ relative: 8, onLine: true, ledgerAbove: 0 })
+  })
+
+  it('reads C3 as a space in the staff, no ledger lines', () => {
+    expect(staffPosition('C3', 'bass')).toMatchObject({ relative: 3, onLine: false, ledgerBelow: 0, ledgerAbove: 0 })
+  })
+
+  it('gives middle C one ledger line above the bass staff', () => {
+    expect(staffPosition('C4', 'bass')).toMatchObject({ relative: 10, onLine: true, ledgerAbove: 1 })
+  })
+
+  it('leaves the treble default untouched', () => {
+    expect(staffPosition('C4')).toEqual(staffPosition('C4', 'treble'))
   })
 })

@@ -1,9 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { parseFingeringCode } from './fingering'
-import { fingeringsForNote, nearestFingerings, noteRange, notesForKeys } from './lookup'
+import { FLUTE, TENOR_SAX } from '@/instruments'
+import { FLUTE_GRAMMAR } from '@/instruments/flute/fingerings'
+import { parseFingeringCode as parse } from './fingering'
+import {
+  fingeringsForNote,
+  nearestFingerings,
+  noteFrequency,
+  noteRange,
+  notesForKeys,
+  soundingNote,
+} from './lookup'
 
-const C_FOOT = { footJoint: 'C', openHole: false } as const
-const B_FOOT = { footJoint: 'B', openHole: false } as const
+const C_FOOT = { instrument: FLUTE, config: [] } as const
+const B_FOOT = { instrument: FLUTE, config: ['bFoot'] } as const
+const SAX = { instrument: TENOR_SAX, config: ['highFSharp'] } as const
+const SAX_NO_HIGH_F = { instrument: TENOR_SAX, config: [] } as const
+
+const parseFingeringCode = (code: string) => parse(code, FLUTE_GRAMMAR)
 
 describe('parseFingeringCode', () => {
   it('reads a full fingering', () => {
@@ -117,5 +130,54 @@ describe('noteRange', () => {
     for (let i = 1; i < range.length; i++) {
       expect(range[i].midi).toBe(range[i - 1].midi + 1)
     }
+  })
+})
+
+describe('tenor sax', () => {
+  it('reads open keys as written C♯5', () => {
+    expect(notesForKeys([], SAX).map((m) => m.note)).toEqual(['C#5'])
+  })
+
+  it('adds the octave key an octave up', () => {
+    const matches = notesForKeys(['OCTAVE', 'L1', 'L2', 'L3', 'R1', 'R2', 'R3'], SAX)
+    expect(matches.map((m) => m.note)).toEqual(['D5'])
+  })
+
+  it('offers bis, one-and-one and side fingerings for B♭', () => {
+    const options = fingeringsForNote('A#4', SAX)
+    expect(options.map((f) => f.kind)).toEqual(['primary', 'alternate', 'alternate'])
+    expect(options[0].keys).toEqual(['L1', 'BIS'])
+    expect(options.map((f) => f.keys)).toContainEqual(['L1', 'R1'])
+    expect(options.map((f) => f.keys)).toContainEqual(['L1', 'SIDE_BB'])
+  })
+
+  it('hides F♯6 without a high F♯ key', () => {
+    expect(noteRange(SAX).at(-1)!.note).toBe('F#6')
+    expect(noteRange(SAX_NO_HIGH_F).at(-1)!.note).toBe('F6')
+  })
+
+  it('starts at written B♭3', () => {
+    expect(noteRange(SAX)[0].note).toBe('A#3')
+  })
+
+  it('does not match flute fingerings', () => {
+    expect(notesForKeys(['THUMB_B', 'L1', 'R_EFLAT'], SAX)).toEqual([])
+  })
+})
+
+describe('transposition', () => {
+  it('sounds a major ninth below written on tenor sax', () => {
+    expect(soundingNote('D5', TENOR_SAX)).toBe('C4')
+    expect(soundingNote('C#5', TENOR_SAX)).toBe('B3')
+  })
+
+  it('leaves flute pitches alone', () => {
+    expect(soundingNote('D5', FLUTE)).toBe('D5')
+  })
+
+  it('gives the sounding frequency', () => {
+    // Written A5 sounds G4.
+    expect(noteFrequency('A5', TENOR_SAX)).toBeCloseTo(391.995, 2)
+    expect(noteFrequency('A4', FLUTE)).toBeCloseTo(440, 5)
   })
 })

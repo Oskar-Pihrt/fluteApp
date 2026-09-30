@@ -24,8 +24,13 @@ export interface StaffPosition {
   accidental: '#' | 'b' | ''
 }
 
+export type Clef = 'treble' | 'bass'
+
 /** E4, the bottom line, as a diatonic step count (octave*7 + step; C=0..B=6). */
 const BOTTOM_LINE = 4 * 7 + 2
+
+/** The bass clef's bottom line is G2. */
+const BOTTOM_LINE_BY_CLEF: Record<Clef, number> = { treble: BOTTOM_LINE, bass: 2 * 7 + 4 }
 
 /** F5, the top line — four line-spacings (eight steps) above the bottom line. */
 const TOP_LINE_RELATIVE = 8
@@ -50,12 +55,17 @@ export function diatonicAtStaffPosition(relative: number): { letter: string; oct
   return { letter: LETTERS[step], octave }
 }
 
-export function staffPosition(note: string): StaffPosition | null {
+/**
+ * `relative` counts steps above the clef's bottom line: E4 in treble, G2 in
+ * bass. The flute pages only ever use treble; the ear trainer's range reaches
+ * C3, which is too far below the treble staff to read, so it uses bass there.
+ */
+export function staffPosition(note: string, clef: Clef = 'treble'): StaffPosition | null {
   const parsed = Note.get(note)
   if (parsed.empty || parsed.oct == null) return null
 
   const diatonic = parsed.oct * 7 + parsed.step
-  const relative = diatonic - BOTTOM_LINE
+  const relative = diatonic - BOTTOM_LINE_BY_CLEF[clef]
 
   return {
     relative,

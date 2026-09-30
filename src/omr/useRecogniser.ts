@@ -1,5 +1,5 @@
 import { onUnmounted, ref, shallowRef } from 'vue'
-import { noteRange } from '@/domain/lookup'
+import { type InstrumentContext, noteRange } from '@/domain/lookup'
 import { useSettingsStore } from '@/stores/settings'
 import type { OmrProgress, OmrResult } from './types'
 import type { RecogniseRequest, SerialisedDebug, WorkerResponse } from './worker'
@@ -62,7 +62,10 @@ export function useRecogniser() {
     }
   }
 
-  async function run(image: Blob, options: { debug?: boolean } = {}): Promise<OmrResult | null> {
+  async function run(
+    image: Blob,
+    options: { debug?: boolean; context?: InstrumentContext } = {},
+  ): Promise<OmrResult | null> {
     cancel()
     running.value = true
     error.value = null
@@ -73,9 +76,9 @@ export function useRecogniser() {
     try {
       const decoded = await decode(image)
 
-      // The flute's playable range, so out-of-range reads get flagged rather
-      // than silently accepted — an octave error is the commonest failure.
-      const playableNotes = noteRange(settings.fluteConfig).map((entry) => entry.note)
+      // The instrument's playable range, so out-of-range reads get flagged
+      // rather than silently accepted — an octave error is the commonest failure.
+      const playableNotes = noteRange(options.context ?? settings.context).map((entry) => entry.note)
 
       worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
 

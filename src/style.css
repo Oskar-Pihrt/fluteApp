@@ -2,27 +2,26 @@
 
 /*
  * FluteApp design tokens.
- * Dark-first: the app is used in rehearsal rooms and on music stands, where a
- * dark UI next to a bright sheet-music image is easier on the eyes.
+ * Palette shared with TimbreMap: near-black green-grey surfaces, pale lime text
+ * and one leaf-green accent. Dark-only: the app is used in rehearsal rooms and
+ * on music stands, where a dark UI next to a bright sheet-music image is easier
+ * on the eyes.
  */
 @theme {
-  --color-ink-950: #0b1020;
-  --color-ink-900: #0f172a;
-  --color-ink-800: #17203a;
-  --color-ink-700: #202b4a;
-  --color-ink-600: #2d3a5e;
-  --color-ink-400: #6b7aa1;
-  --color-ink-200: #b9c3dc;
-  --color-ink-50: #eef1f8;
+  --color-ink-950: #191a19;
+  --color-ink-900: #1f211f;
+  --color-ink-800: #2a2c2a;
+  --color-ink-700: #3a3c3a;
+  --color-ink-600: #4a4d48;
+  --color-ink-400: color-mix(in oklab, #d8e9a8 60%, #191a19);
+  --color-ink-200: color-mix(in oklab, #d8e9a8 88%, #191a19);
+  --color-ink-50: #d8e9a8;
 
-  --color-brass-500: #d9a13b;
-  --color-brass-400: #e8b95c;
-  --color-brass-300: #f2d08c;
+  --color-accent-500: #4e9f3d;
+  --color-accent-400: #5fb84a;
+  --color-accent-300: #7bc96a;
 
-  --color-silver-400: #9fb3c8;
-
-  --font-sans:
-    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-sans: 'Noto Serif', Georgia, serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
@@ -84,4 +83,24 @@
     font-weight: 600;
     margin: 0;
   }
+}
+
+/* Sharp edges, as in TimbreMap. SVG circles (tone holes, noteheads) are
+   unaffected: they are shaped by geometry, not border-radius. */
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
+}
+
+/* Soft film grain over the whole viewport. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
 }

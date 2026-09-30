@@ -4,7 +4,13 @@ import FingeringCard from '@/components/FingeringCard.vue'
 import NoteBadge from '@/components/NoteBadge.vue'
 import PlayButton from '@/components/PlayButton.vue'
 import StaffPosition from '@/components/StaffPosition.vue'
-import { fingeringsForNote, noteFrequency, noteLabelWithEnharmonic } from '@/domain/lookup'
+import {
+  fingeringsForNote,
+  noteFrequency,
+  noteLabel,
+  noteLabelWithEnharmonic,
+  soundingNote,
+} from '@/domain/lookup'
 import { useSettingsStore } from '@/stores/settings'
 
 /**
@@ -15,8 +21,14 @@ import { useSettingsStore } from '@/stores/settings'
 const props = defineProps<{ note: string }>()
 
 const settings = useSettingsStore()
-const fingerings = computed(() => fingeringsForNote(props.note, settings.fluteConfig))
-const frequency = computed(() => noteFrequency(props.note))
+const fingerings = computed(() => fingeringsForNote(props.note, settings.context))
+const frequency = computed(() => noteFrequency(props.note, settings.instrument))
+/** Only shown for transposing instruments, where it differs from the note. */
+const sounding = computed(() => {
+  if (!settings.instrument.transposeSemitones) return null
+  const note = soundingNote(props.note, settings.instrument)
+  return note && noteLabel(note)
+})
 </script>
 
 <template>
@@ -27,6 +39,7 @@ const frequency = computed(() => noteFrequency(props.note))
         <NoteBadge :note="note" size="lg" />
         <p class="mt-1 text-sm text-ink-400">
           {{ noteLabelWithEnharmonic(note) }}
+          <span v-if="sounding"> · sounds {{ sounding }}</span>
           <span v-if="frequency"> · {{ frequency.toFixed(1) }} Hz</span>
         </p>
       </div>

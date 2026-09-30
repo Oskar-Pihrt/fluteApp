@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Note } from 'tonal'
-import { noteLabel, noteRange } from '@/domain/lookup'
+import { type InstrumentContext, noteLabel, noteRange } from '@/domain/lookup'
 import { useSettingsStore } from '@/stores/settings'
 
 /**
@@ -9,21 +9,27 @@ import { useSettingsStore } from '@/stores/settings'
  *
  * The bottleneck when noting down sheet music is entering many notes in a row,
  * so the octave is sticky: you pick an octave once and then tap pitch names
- * repeatedly. Only octaves that exist in the flute's range are offered.
+ * repeatedly. Only octaves that exist in the instrument's range are offered.
  */
 
+const props = defineProps<{ context?: InstrumentContext }>()
 const emit = defineEmits<{ add: [note: string] }>()
 
 const settings = useSettingsStore()
+const context = computed(() => props.context ?? settings.context)
 
-const range = computed(() => noteRange(settings.fluteConfig))
+const range = computed(() => noteRange(context.value))
 
 const octaves = computed(() => [
   ...new Set(range.value.map((entry) => Note.get(entry.note).oct ?? 0)),
 ])
 
 const octave = ref<number | null>(null)
-const activeOctave = computed(() => octave.value ?? (octaves.value.includes(5) ? 5 : octaves.value[0]))
+const activeOctave = computed(() => {
+  if (octave.value != null && octaves.value.includes(octave.value)) return octave.value
+  const preferred = context.value.instrument.defaultPickerOctave
+  return octaves.value.includes(preferred) ? preferred : octaves.value[0]
+})
 
 const PITCH_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const
 
@@ -54,7 +60,7 @@ const buttons = computed(() =>
           class="h-8 w-8 rounded-lg border text-sm font-semibold transition-colors"
           :class="
             oct === activeOctave
-              ? 'border-brass-400 bg-brass-400 text-ink-950'
+              ? 'border-accent-400 bg-accent-400 text-ink-950'
               : 'border-ink-600 text-ink-200 hover:border-ink-400'
           "
           @click="octave = oct"
@@ -72,8 +78,8 @@ const buttons = computed(() =>
         class="rounded-lg border py-2.5 text-sm font-semibold transition-colors disabled:opacity-25"
         :class="
           button.accidental
-            ? 'border-ink-700 bg-ink-950 text-ink-200 enabled:hover:border-brass-400'
-            : 'border-ink-600 bg-ink-800 text-ink-50 enabled:hover:border-brass-400'
+            ? 'border-ink-700 bg-ink-950 text-ink-200 enabled:hover:border-accent-400'
+            : 'border-ink-600 bg-ink-800 text-ink-50 enabled:hover:border-accent-400'
         "
         :disabled="!button.enabled"
         @click="emit('add', button.note)"

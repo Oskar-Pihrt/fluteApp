@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import KeyChart from '@/components/KeyChart.vue'
 import NoteBadge from '@/components/NoteBadge.vue'
@@ -12,30 +12,32 @@ import {
   nearestFingerings,
   noteLabelWithEnharmonic,
   notesForKeys,
+  unavailableKeys,
 } from '@/domain/lookup'
 import { useSettingsStore } from '@/stores/settings'
 
 /**
  * Feature 1 — pick the keys you press, get the notes it produces.
  *
- * The first two octaves of the flute share fingerings, so a match commonly
- * returns two notes an octave apart. That is shown as a list rather than a
+ * The first two octaves share fingerings, so a match commonly returns two
+ * notes an octave apart. That is shown as a list rather than a
  * single answer, on purpose.
  */
 
 const settings = useSettingsStore()
 const selected = ref<KeyId[]>([])
 
-const unavailable = computed<KeyId[]>(() =>
-  settings.footJoint === 'B' ? [] : ['FOOT_B', 'GIZMO'],
-)
+const unavailable = computed(() => unavailableKeys(settings.context))
 
-const matches = computed(() => notesForKeys(selected.value, settings.fluteConfig))
+const matches = computed(() => notesForKeys(selected.value, settings.context))
 const suggestions = computed(() =>
   matches.value.length || !selected.value.length
     ? []
-    : nearestFingerings(selected.value, settings.fluteConfig),
+    : nearestFingerings(selected.value, settings.context),
 )
+
+// A key set from one instrument means nothing on another.
+watch(() => settings.instrumentId, () => (selected.value = []))
 
 function reset() {
   selected.value = []
@@ -103,7 +105,7 @@ function reset() {
                 <span v-if="hasEnharmonic(match.note)">{{
                   noteLabelWithEnharmonic(match.note)
                 }}</span>
-                <span v-if="match.kind !== 'primary'" class="text-brass-400">
+                <span v-if="match.kind !== 'primary'" class="text-accent-400">
                   {{ hasEnharmonic(match.note) ? '· ' : '' }}{{ match.kind }} fingering
                 </span>
               </p>
@@ -114,7 +116,7 @@ function reset() {
 
               <RouterLink
                 :to="{ name: 'note', params: { note: canonicalNote(match.midi) } }"
-                class="mt-3 inline-block text-xs font-medium text-brass-400 hover:text-brass-300"
+                class="mt-3 inline-block text-xs font-medium text-accent-400 hover:text-accent-300"
               >
                 All ways to play this note →
               </RouterLink>
@@ -127,7 +129,7 @@ function reset() {
           <div class="rounded-xl border border-ink-700 bg-ink-900 px-4 py-4">
             <p class="text-sm text-ink-200">No documented note for this combination.</p>
             <p class="mt-1 text-xs text-ink-400">
-              Plenty of key combinations produce no usable pitch on the flute.
+              Plenty of key combinations produce no usable pitch on the {{ settings.instrument.noun }}.
             </p>
           </div>
 
@@ -137,7 +139,7 @@ function reset() {
               <li v-for="suggestion in suggestions" :key="suggestion.fingering.id">
                 <button
                   type="button"
-                  class="flex w-full items-center gap-3 rounded-xl border border-ink-700 bg-ink-900 px-4 py-3 text-left transition-colors hover:border-brass-400"
+                  class="flex w-full items-center gap-3 rounded-xl border border-ink-700 bg-ink-900 px-4 py-3 text-left transition-colors hover:border-accent-400"
                   @click="selected = [...suggestion.fingering.keys]"
                 >
                   <NoteBadge :note="suggestion.fingering.note" />

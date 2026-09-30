@@ -304,7 +304,7 @@ export function recognise(gray: Bitmap, options: RecogniseOptions = {}): Recogni
     if (outOfRange.length) {
       warnings.push({
         code: 'out-of-range',
-        message: `${outOfRange.length} ${outOfRange.length === 1 ? 'note is' : 'notes are'} outside the flute's range — probably an octave misread.`,
+        message: `${outOfRange.length} ${outOfRange.length === 1 ? 'note is' : 'notes are'} outside the instrument's range — probably an octave misread.`,
         noteIndices: outOfRange,
       })
     }

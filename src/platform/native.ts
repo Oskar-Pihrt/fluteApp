@@ -16,7 +16,7 @@ export async function setupNativePlatform(router: Router): Promise<void> {
 
   // Dark UI, so light status bar icons.
   await StatusBar.setStyle({ style: Style.Dark }).catch(() => {})
-  await StatusBar.setBackgroundColor({ color: '#0f172a' }).catch(() => {})
+  await StatusBar.setBackgroundColor({ color: '#191A19' }).catch(() => {})
 
   // Android's hardware back button defaults to closing the app outright, which
   // loses the user's place. Navigate back instead, and only exit from the root.

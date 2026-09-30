@@ -14,8 +14,8 @@ import { useRecogniser } from '@/omr/useRecogniser'
 import type { Box, KeySignature, OmrWarning } from '@/omr/types'
 import { createBlobUrl, revokeBlobUrl } from '@/data/images'
 import { playNote, playSequence } from '@/domain/audio'
-import type { Fingering } from '@/domain/fingering'
-import { canonicalNote, fingeringsForNote, noteLabel, prettyCode } from '@/domain/lookup'
+import { type Fingering, prettyCode } from '@/domain/fingering'
+import { canonicalNote, fingeringsForNote, noteLabel } from '@/domain/lookup'
 import { useSettingsStore } from '@/stores/settings'
 import { useSheetsStore } from '@/stores/sheets'
 
@@ -43,6 +43,13 @@ interface DraftNote {
 }
 
 const sheet = ref<Sheet | null>(null)
+
+/**
+ * The sheet's own instrument, not the globally selected one: its notes are in
+ * that instrument's written pitch, so its fingerings, range and playback must
+ * follow it even when the switch is set to something else.
+ */
+const context = computed(() => settings.contextFor(sheet.value?.instrument))
 const imageUrl = ref<string | null>(null)
 const draft = ref<DraftNote[]>([])
 const savedSnapshot = ref('[]')
@@ -124,7 +131,7 @@ onUnmounted(() => {
 /** Fingerings for the whole sequence, resolved once per draft change. */
 const resolved = computed(() =>
   draft.value.map((entry) => {
-    const options = fingeringsForNote(entry.note, settings.fluteConfig)
+    const options = fingeringsForNote(entry.note, context.value)
     const chosen =
       options.find((option) => option.id === entry.chosenFingeringId) ?? options[0] ?? null
     return { ...entry, options, chosen }
@@ -138,7 +145,7 @@ const selected = computed(() =>
 function addNote(note: string) {
   draft.value.push({ note })
   selectedIndex.value = draft.value.length - 1
-  if (settings.audioEnabled) playNote(note, 0.4)
+  if (settings.audioEnabled) playNote(note, context.value.instrument, 0.4)
 }
 
 /**
@@ -155,7 +162,10 @@ async function detect() {
     return
   }
 
-  const outcome = await recogniser.run(sheet.value.image, { debug: showDebug.value })
+  const outcome = await recogniser.run(sheet.value.image, {
+    debug: showDebug.value,
+    context: context.value,
+  })
   if (!outcome) return
 
   detectionWarnings.value = outcome.warnings
@@ -269,7 +279,10 @@ function togglePlayback() {
     return
   }
   if (!draft.value.length) return
-  stopPlayback.value = playSequence(draft.value.map((entry) => entry.note))
+  stopPlayback.value = playSequence(
+    draft.value.map((entry) => entry.note),
+    context.value.instrument,
+  )
 }
 
 function startRename() {
@@ -328,19 +341,19 @@ async function deleteSheet() {
         type="text"
         placeholder="Title"
         aria-label="Title"
-        class="w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-ink-50 placeholder:text-ink-600 focus:border-brass-400 focus:outline-none"
+        class="w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-ink-50 placeholder:text-ink-600 focus:border-accent-400 focus:outline-none"
       />
       <input
         v-model="composerDraft"
         type="text"
         placeholder="Composer"
         aria-label="Composer"
-        class="w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-ink-50 placeholder:text-ink-600 focus:border-brass-400 focus:outline-none"
+        class="w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-ink-50 placeholder:text-ink-600 focus:border-accent-400 focus:outline-none"
       />
       <div class="flex gap-2">
         <button
           type="submit"
-          class="rounded-lg bg-brass-400 px-4 py-2 text-sm font-semibold text-ink-950 transition-colors hover:bg-brass-300"
+          class="rounded-lg bg-accent-400 px-4 py-2 text-sm font-semibold text-ink-950 transition-colors hover:bg-accent-300"
         >
           Save
         </button>
@@ -395,7 +408,7 @@ async function deleteSheet() {
       </div>
       <div class="h-1.5 overflow-hidden rounded-full bg-ink-800">
         <div
-          class="h-full rounded-full bg-brass-400 transition-[width] duration-300"
+          class="h-full rounded-full bg-accent-400 transition-[width] duration-300"
           :style="{ width: `${Math.round((recogniser.progress.value?.fraction ?? 0) * 100)}%` }"
         />
       </div>
@@ -429,7 +442,7 @@ async function deleteSheet() {
          badly, and the only way to tell which stage went wrong. -->
     <div v-if="isDev" class="flex items-center gap-2">
       <label class="flex cursor-pointer items-center gap-2 text-xs text-ink-400">
-        <input v-model="showDebug" type="checkbox" class="h-3.5 w-3.5 accent-brass-400" />
+        <input v-model="showDebug" type="checkbox" class="h-3.5 w-3.5 accent-accent-400" />
         Show detection stages on next run
       </label>
     </div>
@@ -457,8 +470,8 @@ async function deleteSheet() {
           class="h-8 min-w-9 rounded-lg border px-2 text-sm font-semibold transition-colors"
           :class="
             isCurrentKey(choice.key)
-              ? 'border-brass-400 bg-brass-400 text-ink-950'
-              : 'border-ink-600 text-ink-200 hover:border-brass-400'
+              ? 'border-accent-400 bg-accent-400 text-ink-950'
+              : 'border-ink-600 text-ink-200 hover:border-accent-400'
           "
           @click="applyKey(choice.key)"
         >
@@ -477,14 +490,14 @@ async function deleteSheet() {
           <button
             v-if="draft.length && settings.audioEnabled"
             type="button"
-            class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-brass-400"
+            class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400"
             @click="togglePlayback"
           >
             {{ stopPlayback ? 'Stop' : 'Play through' }}
           </button>
           <button
             type="button"
-            class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-brass-400 disabled:opacity-50"
+            class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400 disabled:opacity-50"
             :disabled="recogniser.running.value"
             @click="detect"
           >
@@ -492,7 +505,7 @@ async function deleteSheet() {
           </button>
           <button
             type="button"
-            class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-brass-400"
+            class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400"
             @click="editing = !editing"
           >
             {{ editing ? 'Done adding' : draft.length ? 'Add notes' : 'Note it down' }}
@@ -523,7 +536,7 @@ async function deleteSheet() {
             class="flex min-w-11 flex-col items-center rounded-lg border px-2 py-1.5 transition-colors"
             :class="
               selectedIndex === index
-                ? 'border-brass-400 bg-ink-800'
+                ? 'border-accent-400 bg-ink-800'
                 : 'border-ink-700 bg-ink-900 hover:border-ink-400'
             "
             @click="selectedIndex = selectedIndex === index ? null : index"
@@ -569,6 +582,7 @@ async function deleteSheet() {
         <KeyChart
           :keys="selected.chosen.keys"
           :vented="selected.chosen.vented"
+          :instrument="context.instrument"
           size="md"
           class="shrink-0"
         />
@@ -593,8 +607,8 @@ async function deleteSheet() {
                 class="rounded-md border px-2 py-1 text-[11px] font-medium transition-colors"
                 :class="
                   option.id === selected.chosen.id
-                    ? 'border-brass-400 bg-brass-400 text-ink-950'
-                    : 'border-ink-600 text-ink-200 hover:border-brass-400'
+                    ? 'border-accent-400 bg-accent-400 text-ink-950'
+                    : 'border-ink-600 text-ink-200 hover:border-accent-400'
                 "
                 @click="chooseFingering(selectedIndex!, option)"
               >
@@ -605,7 +619,7 @@ async function deleteSheet() {
 
           <RouterLink
             :to="{ name: 'note', params: { note: canonicalNote(selected.chosen.midi) } }"
-            class="inline-block pt-1 text-xs font-medium text-brass-400 hover:text-brass-300"
+            class="inline-block pt-1 text-xs font-medium text-accent-400 hover:text-accent-300"
           >
             Open in note library →
           </RouterLink>
@@ -617,12 +631,12 @@ async function deleteSheet() {
       </p>
     </section>
 
-    <NotePicker v-if="editing" @add="addNote" />
+    <NotePicker v-if="editing" :context="context" @add="addNote" />
 
     <div v-if="dirty" class="sticky bottom-24 flex gap-2 md:bottom-4">
       <button
         type="button"
-        class="flex-1 rounded-lg bg-brass-400 px-4 py-2.5 text-sm font-semibold text-ink-950 shadow-lg shadow-ink-950/50 transition-colors hover:bg-brass-300 disabled:opacity-50"
+        class="flex-1 rounded-lg bg-accent-400 px-4 py-2.5 text-sm font-semibold text-ink-950 shadow-lg shadow-ink-950/50 transition-colors hover:bg-accent-300 disabled:opacity-50"
         :disabled="saving"
         @click="save"
       >

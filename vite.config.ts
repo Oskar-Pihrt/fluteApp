@@ -12,13 +12,15 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
+      // The ear trainer's piano samples (~1 MB) are precached so it works offline.
+      workbox: { globPatterns: ['**/*.{js,css,html,svg,png,m4a,woff2,woff}'] },
       manifest: {
         name: 'FluteApp — transverse flute fingerings',
         short_name: 'FluteApp',
         description:
           'Fingering lookup, note library and sheet music practice for transverse flute players.',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        theme_color: '#191A19',
+        background_color: '#191A19',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',

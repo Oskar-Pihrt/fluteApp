@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { db, newId, type Sheet, type SheetNote } from '@/data/db'
 import { blobToBase64, base64ToBlob, prepareImage } from '@/data/images'
+import type { InstrumentId } from '@/instruments/types'
 
 /**
  * The sheet-music library: CRUD over Dexie plus whole-library backup.
@@ -32,7 +33,12 @@ export const useSheetsStore = defineStore('sheets', () => {
     return rows.sort((a, b) => a.index - b.index)
   }
 
-  async function create(file: Blob, title: string, composer = ''): Promise<string> {
+  async function create(
+    file: Blob,
+    title: string,
+    instrument: InstrumentId,
+    composer = '',
+  ): Promise<string> {
     const prepared = await prepareImage(file)
     const now = Date.now()
     const sheet: Sheet = {
@@ -45,6 +51,7 @@ export const useSheetsStore = defineStore('sheets', () => {
       thumbnail: prepared.thumbnail,
       imageWidth: prepared.width,
       imageHeight: prepared.height,
+      instrument,
     }
     await db.sheets.add(sheet)
     await loadAll()
@@ -90,10 +97,13 @@ export const useSheetsStore = defineStore('sheets', () => {
    * Version 2 carries each note's `bbox` and `source`. Version 1 files import
    * unchanged — those fields are optional, and a note without a box simply
    * cannot be highlighted on the scan.
+   *
+   * Version 3 carries each sheet's `instrument`. Older files have none, which
+   * reads as the flute — the only instrument they could have been made for.
    */
   interface Backup {
     format: 'fluteapp-backup'
-    version: 1 | 2
+    version: 1 | 2 | 3
     exportedAt: number
     sheets: BackupSheet[]
   }
@@ -102,7 +112,7 @@ export const useSheetsStore = defineStore('sheets', () => {
     const all = await db.sheets.toArray()
     const payload: Backup = {
       format: 'fluteapp-backup',
-      version: 2,
+      version: 3,
       exportedAt: Date.now(),
       sheets: await Promise.all(
         all.map(async (sheet) => {

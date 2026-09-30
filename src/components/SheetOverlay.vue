@@ -62,7 +62,7 @@ const drawable = computed(() =>
    constant screen width instead. */
 .note-box {
   fill: transparent;
-  stroke: var(--color-brass-400);
+  stroke: var(--color-accent-400);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
   opacity: 0.55;
@@ -82,7 +82,7 @@ const drawable = computed(() =>
 }
 
 .note-box--selected {
-  fill: color-mix(in srgb, var(--color-brass-400) 25%, transparent);
+  fill: color-mix(in srgb, var(--color-accent-400) 25%, transparent);
   stroke-width: 3;
   opacity: 1;
 }

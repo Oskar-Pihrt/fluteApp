@@ -14,9 +14,9 @@ const settings = useSettingsStore()
 
 const octaves = computed(() => {
   const groups = new Map<number, { note: string; midi: number; count: number }[]>()
-  for (const entry of noteRange(settings.fluteConfig)) {
+  for (const entry of noteRange(settings.context)) {
     const octave = Note.get(entry.note).oct ?? 0
-    const count = fingeringsForNote(entry.note, settings.fluteConfig).length
+    const count = fingeringsForNote(entry.note, settings.context).length
     const bucket = groups.get(octave)
     const item = { ...entry, count }
     if (bucket) bucket.push(item)
@@ -24,15 +24,6 @@ const octaves = computed(() => {
   }
   return [...groups.entries()].map(([octave, notes]) => ({ octave, notes }))
 })
-
-/** Registers are how flutists actually think about the range. */
-const REGISTER_NAMES: Record<number, string> = {
-  3: 'Low register',
-  4: 'Low register',
-  5: 'Middle register',
-  6: 'High register',
-  7: 'High register',
-}
 
 /** Only one note unfolded at a time — opening another folds the previous one. */
 const expanded = ref<string | null>(null)
@@ -59,7 +50,7 @@ function octaveOf(note: string): number {
       <h2 class="flex items-baseline gap-2 text-xs font-semibold uppercase tracking-wider text-ink-400">
         Octave {{ group.octave }}
         <span class="font-normal normal-case tracking-normal text-ink-600">
-          {{ REGISTER_NAMES[group.octave] }}
+          {{ settings.instrument.registerNames[group.octave] }}
         </span>
       </h2>
 
@@ -70,8 +61,8 @@ function octaveOf(note: string): number {
             class="flex w-full flex-col items-center gap-0.5 rounded-xl border px-2 py-3 transition-colors"
             :class="
               expanded === entry.note
-                ? 'border-brass-400 bg-ink-800'
-                : 'border-ink-700 bg-ink-900 hover:border-brass-400'
+                ? 'border-accent-400 bg-ink-800'
+                : 'border-ink-700 bg-ink-900 hover:border-accent-400'
             "
             :aria-expanded="expanded === entry.note"
             @click="toggle(entry.note)"
@@ -101,11 +92,19 @@ function octaveOf(note: string): number {
     </section>
 
     <p class="rounded-xl border border-ink-800 px-4 py-3 text-xs leading-relaxed text-ink-400">
-      Showing the range for a
-      <strong class="text-ink-200">{{ settings.footJoint }} footjoint</strong>
-      flute. Change it in
-      <RouterLink :to="{ name: 'settings' }" class="text-brass-400">Setup</RouterLink>
-      to include low B and the gizmo key.
+      <template v-if="settings.instrumentId === 'flute'">
+        Showing the range for a
+        <strong class="text-ink-200">{{ settings.footJoint }} footjoint</strong>
+        flute. Change it in
+        <RouterLink :to="{ name: 'settings' }" class="text-accent-400">Setup</RouterLink>
+        to include low B and the gizmo key.
+      </template>
+      <template v-else>
+        Notes are shown in written pitch, as you read them.
+        <strong class="text-ink-200">High F♯ key {{ settings.saxHighFSharp ? 'on' : 'off' }}</strong
+        >. Change it in
+        <RouterLink :to="{ name: 'settings' }" class="text-accent-400">Setup</RouterLink>.
+      </template>
     </p>
   </div>
 </template>

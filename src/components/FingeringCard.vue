@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import KeyChart from '@/components/KeyChart.vue'
-import type { Fingering } from '@/domain/fingering'
-import { prettyCode } from '@/domain/lookup'
+import { type Fingering, prettyCode } from '@/domain/fingering'
+import { getInstrument, REQUIREMENT_LABELS } from '@/instruments'
 
 /** One fingering rendered as a diagram plus its notation and caveats. */
 const props = withDefaults(
@@ -23,6 +23,7 @@ const KIND_LABELS: Record<Fingering['kind'], string> = {
       :keys="props.fingering.keys"
       :vented="props.fingering.vented"
       :size="props.size"
+      :instrument="getInstrument(props.fingering.instrument)"
       class="shrink-0"
     />
 
@@ -32,23 +33,18 @@ const KIND_LABELS: Record<Fingering['kind'], string> = {
           class="rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
           :class="
             props.fingering.kind === 'primary'
-              ? 'bg-brass-400 text-ink-950'
+              ? 'bg-accent-400 text-ink-950'
               : 'border border-ink-600 text-ink-200'
           "
         >
           {{ KIND_LABELS[props.fingering.kind] }}
         </span>
         <span
-          v-if="props.fingering.footJoint === 'B'"
+          v-for="requirement in props.fingering.requires"
+          :key="requirement"
           class="rounded-md border border-ink-600 px-2 py-0.5 text-[11px] text-ink-400"
         >
-          B footjoint
-        </span>
-        <span
-          v-if="props.fingering.requiresOpenHole"
-          class="rounded-md border border-ink-600 px-2 py-0.5 text-[11px] text-ink-400"
-        >
-          Open hole
+          {{ REQUIREMENT_LABELS[requirement] }}
         </span>
       </div>
 

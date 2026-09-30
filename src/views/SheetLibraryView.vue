@@ -1,13 +1,25 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { createBlobUrl, revokeBlobUrl } from '@/data/images'
+import { INSTRUMENTS } from '@/instruments'
+import { useSettingsStore } from '@/stores/settings'
 import { useSheetsStore } from '@/stores/sheets'
 
 /** Feature 3, library — the grid of saved sheet music. */
 
 const router = useRouter()
 const store = useSheetsStore()
+const settings = useSettingsStore()
+
+/** A sheet belongs to the instrument it was made for; older sheets are flute. */
+const visible = computed(() =>
+  store.sheets.filter((sheet) => (sheet.instrument ?? 'flute') === settings.instrumentId),
+)
+const hiddenCount = computed(() => store.sheets.length - visible.value.length)
+const otherInstrument = computed(() =>
+  INSTRUMENTS[settings.instrumentId === 'flute' ? 'tenorSax' : 'flute'],
+)
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const busy = ref(false)
@@ -45,7 +57,7 @@ async function onPick(event: Event) {
   error.value = null
   try {
     const title = file.name.replace(/\.[^.]+$/, '')
-    const id = await store.create(file, title)
+    const id = await store.create(file, title, settings.instrumentId)
     await router.push({ name: 'sheet', params: { id } })
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'Could not add that image.'
@@ -72,7 +84,7 @@ function formatDate(timestamp: number): string {
       </div>
       <button
         type="button"
-        class="shrink-0 rounded-lg bg-brass-400 px-3.5 py-2 text-sm font-semibold text-ink-950 transition-colors hover:bg-brass-300 disabled:opacity-50"
+        class="shrink-0 rounded-lg bg-accent-400 px-3.5 py-2 text-sm font-semibold text-ink-950 transition-colors hover:bg-accent-300 disabled:opacity-50"
         :disabled="busy"
         @click="fileInput?.click()"
       >
@@ -95,19 +107,19 @@ function formatDate(timestamp: number): string {
     </p>
 
     <p
-      v-if="!store.loading && !store.sheets.length"
+      v-if="!store.loading && !visible.length"
       class="rounded-xl border border-dashed border-ink-700 px-4 py-10 text-center text-sm text-ink-400"
     >
-      Nothing saved yet.
+      Nothing saved for the {{ settings.instrument.noun }} yet.
       <br />
       Add a photo of a piece you're learning and build up its fingerings note by note.
     </p>
 
     <ul v-else class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-      <li v-for="sheet in store.sheets" :key="sheet.id">
+      <li v-for="sheet in visible" :key="sheet.id">
         <RouterLink
           :to="{ name: 'sheet', params: { id: sheet.id } }"
-          class="block overflow-hidden rounded-xl border border-ink-700 bg-ink-900 transition-colors hover:border-brass-400"
+          class="block overflow-hidden rounded-xl border border-ink-700 bg-ink-900 transition-colors hover:border-accent-400"
         >
           <img
             v-if="thumbnails[sheet.id]"
@@ -124,5 +136,11 @@ function formatDate(timestamp: number): string {
         </RouterLink>
       </li>
     </ul>
+
+    <p v-if="hiddenCount" class="text-center text-xs text-ink-400">
+      {{ hiddenCount }} {{ hiddenCount === 1 ? 'sheet' : 'sheets' }} for the
+      {{ otherInstrument.noun }} hidden — switch instrument to see
+      {{ hiddenCount === 1 ? 'it' : 'them' }}.
+    </p>
   </div>
 </template>

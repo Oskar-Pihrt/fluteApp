@@ -1,31 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import {
-  EXCLUSIVE_KEY_GROUPS,
-  FLUTE_KEYS,
-  type FluteKey,
-  type KeyId,
-  keysInGroup,
-  sortKeys,
-} from '@/domain/keys'
+import { type InstrumentKey, type KeyId, keysInGroup, sortKeys } from '@/domain/keys'
+import type { Instrument } from '@/instruments'
+import { useSettingsStore } from '@/stores/settings'
 
 /**
- * The flute's keywork drawn as a fingering chart — the keys alone, in their real
- * silhouettes, with no instrument body and no lettering. Filling a key in is
- * what "pressed" means.
- *
- * Laid out from the standard horizontal key chart, rotated upright so the
- * headjoint is at the top. Two consequences of that rotation are worth knowing,
- * because they are not what you would guess:
- *
- *  - The chart's second row becomes a LEFT column. It holds the two long thumb
- *    levers beside the left hand, the G♯ touchpiece, and the two small trill
- *    keys tucked between the right-hand keys.
- *  - The E♭ key and the footjoint keys run ACROSS the width, not down it. On the
- *    horizontal chart they are tall and narrow; rotated, they become wide and
- *    short, which is why the bottom of the diagram is a row of levers.
- *
- * Geometry is in viewBox units, transcribed proportionally from the chart.
+ * An instrument's keywork drawn as a fingering chart. Filling a key in is what
+ * "pressed" means. The geometry lives with the instrument
+ * (`src/instruments/<id>/layout.ts`); this component only draws and toggles.
  */
 
 const props = withDefaults(
@@ -38,119 +20,30 @@ const props = withDefaults(
     /** Keys the current instrument doesn't have — shown faint and untappable. */
     unavailable?: readonly KeyId[]
     size?: 'sm' | 'md' | 'lg'
+    /** Defaults to the active instrument. */
+    instrument?: Instrument
   }>(),
-  { vented: () => [], interactive: false, unavailable: () => [], size: 'md' },
+  { vented: () => [], interactive: false, unavailable: () => [], size: 'md', instrument: undefined },
 )
 
 const emit = defineEmits<{ 'update:keys': [KeyId[]] }>()
 
-const WIDTH = 210
-const HEIGHT = 612
+const settings = useSettingsStore()
+const instrument = computed(() => props.instrument ?? settings.instrument)
+const chart = computed(() => instrument.value.chart)
+const pixelWidth = computed(() => chart.value.pixelWidth[props.size])
 
-/** A key is drawn from one or more primitives, all sharing its pressed state. */
-type Part =
-  | { s: 'circle'; cx: number; cy: number; r: number }
-  | { s: 'rect'; x: number; y: number; w: number; h: number; rx: number }
-  | { s: 'arm'; x1: number; y1: number; x2: number; y2: number }
+/** Keys in drawing order, paired with their geometry. */
+const drawnKeys = computed(() =>
+  instrument.value.keys.flatMap((key) => {
+    const drawing = chart.value.drawings[key.id]
+    return drawing ? [{ key, drawing }] : []
+  }),
+)
 
-interface Box {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-interface KeyDrawing {
-  parts: Part[]
-  hit: Box
-  /** Ring keys can be vented, which needs a hole drawn in the middle. */
-  ring?: { cx: number; cy: number; r: number }
-}
-
-/**
- * The six finger keys sit on the centre line, in two groups of three, and their
- * sizes graduate exactly as they do on the chart — the first is noticeably
- * smaller than the third.
- */
-function fingerKey(cy: number, r: number): KeyDrawing {
-  return {
-    parts: [{ s: 'circle', cx: 130, cy, r }],
-    ring: { cx: 130, cy, r },
-    hit: { x: 130 - r - 6, y: cy - r - 6, width: (r + 6) * 2, height: (r + 6) * 2 },
-  }
-}
-
-const LAYOUT: Record<KeyId, KeyDrawing> = {
-  // Two long thumb levers down the left, beside the left hand. B♭ is the one
-  // reaching further towards the headjoint.
-  THUMB_BB: {
-    parts: [{ s: 'rect', x: 66, y: 60, w: 30, h: 45, rx: 14 }],
-    hit: { x: 66, y: 60, width: 32, height: 55 },
-  },
-  THUMB_B: {
-    parts: [{ s: 'rect', x: 40, y: 114, w: 45, h: 70, rx: 14 }],
-    hit: { x: 40, y: 114, width: 50, height: 80 },
-  },
-
-  L1: fingerKey(42, 20),
-  L2: fingerKey(112, 26),
-  L3: fingerKey(188, 28),
-
-  // The G♯ key: a lobe out to the right, an arm back to its pad on the centre
-  // line, and the L-shaped touchpiece the left little finger presses.
-  L_GSHARP: {
-    parts: [
-      { s: 'rect', x: 170, y: 200, w: 40, h: 60, rx: 19 },
-    ],
-    hit: { x: 58, y: 214, width: 46, height: 60 },
-  },
-
-  R1: fingerKey(302, 27),
-  R2: fingerKey(370, 27),
-  R3: fingerKey(444, 25),
-
-  // Trill keys: small levers on the left, between the right-hand keys.
-  TRILL_D: {
-    parts: [{ s: 'rect', x: 58, y: 326, w: 38, h: 24, rx: 10 }],
-    hit: { x: 52, y: 320, width: 50, height: 36 },
-  },
-  TRILL_DSHARP: {
-    parts: [{ s: 'rect', x: 58, y: 396, w: 38, h: 24, rx: 10 }],
-    hit: { x: 52, y: 390, width: 50, height: 36 },
-  },
-
-  // The E♭ key spans the width — tall and narrow on the horizontal chart, so
-  // wide and short once stood upright.
-  R_EFLAT: {
-    parts: [{ s: 'rect', x: 50, y: 482, w: 112, h: 40, rx: 16 }],
-    hit: { x: 44, y: 476, width: 124, height: 52 },
-  },
-
-  // Footjoint: a row of levers across the bottom, running large to small — the
-  // wide C♯ lever on the left, then C and B, with the little gizmo key on the
-  // right. Spacing comes from mirroring the row about x = 97, then shifting the
-  // whole row 30 units right; gaps stay even at 21 units.
-  FOOT_CSHARP: {
-    parts: [{ s: 'rect', x: 56, y: 534, w: 34, h: 62, rx: 13 }],
-    hit: { x: 52, y: 530, width: 42, height: 70 },
-  },
-  FOOT_C: {
-    parts: [{ s: 'rect', x: 111, y: 534, w: 15, h: 62, rx: 13 }],
-    hit: { x: 103, y: 530, width: 31, height: 70 },
-  },
-  FOOT_B: {
-    parts: [{ s: 'rect', x: 147, y: 534, w: 15, h: 62, rx: 13 }],
-    hit: { x: 139, y: 530, width: 31, height: 70 },
-  },
-  GIZMO: {
-    parts: [{ s: 'rect', x: 183, y: 546, w: 15, h: 50, rx: 13 }],
-    hit: { x: 175, y: 542, width: 31, height: 58 },
-  },
-}
-
-const PIXEL_WIDTH = { sm: 74, md: 104, lg: 172 } as const
-
-const EXCLUSIVE_SETS = EXCLUSIVE_KEY_GROUPS.map(keysInGroup)
+const exclusiveSets = computed(() =>
+  instrument.value.exclusiveGroups.map((group) => keysInGroup(instrument.value.keys, group)),
+)
 
 const pressedSet = computed(() => new Set(props.keys))
 const ventedSet = computed(() => new Set(props.vented))
@@ -165,13 +58,13 @@ function stateOf(key: KeyId): State {
   return 'open'
 }
 
-function toggle(key: FluteKey) {
+function toggle(key: InstrumentKey) {
   if (!props.interactive || unavailableSet.value.has(key.id)) return
   const next = new Set(props.keys)
   if (next.has(key.id)) {
     next.delete(key.id)
   } else {
-    for (const group of EXCLUSIVE_SETS) {
+    for (const group of exclusiveSets.value) {
       if (group.includes(key.id)) for (const other of group) next.delete(other)
     }
     next.add(key.id)
@@ -180,14 +73,14 @@ function toggle(key: FluteKey) {
 }
 
 /**
- * With no lettering on the keys, the accessible name is the only way a screen
- * reader user can tell them apart — so it carries the full key name.
+ * The accessible name is the only way a screen reader user can tell the keys
+ * apart — so it carries the full key name.
  */
-function ariaLabel(key: FluteKey): string {
+function ariaLabel(key: InstrumentKey): string {
   const suffix = {
     pressed: 'pressed',
     vented: 'ring depressed, hole open',
-    unavailable: 'not on this flute',
+    unavailable: `not on this ${instrument.value.noun}`,
     open: 'open',
   }[stateOf(key.id)]
   return `${key.name}, ${suffix}`
@@ -196,16 +89,31 @@ function ariaLabel(key: FluteKey): string {
 
 <template>
   <svg
-    :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
-    :width="PIXEL_WIDTH[size]"
-    :height="(PIXEL_WIDTH[size] * HEIGHT) / WIDTH"
+    :viewBox="`0 0 ${chart.width} ${chart.height}`"
+    :width="pixelWidth"
+    :height="(pixelWidth * chart.height) / chart.width"
     class="key-chart"
     :class="{ 'key-chart--interactive': interactive }"
     :role="interactive ? 'group' : 'img'"
-    :aria-label="interactive ? 'Flute fingering — tap keys to select' : 'Flute fingering diagram'"
+    :aria-label="
+      interactive
+        ? `${instrument.shortName} fingering — tap keys to select`
+        : `${instrument.shortName} fingering diagram`
+    "
   >
+    <template v-for="(part, index) in chart.decorations ?? []" :key="`d${index}`">
+      <line
+        v-if="part.s === 'arm'"
+        :x1="part.x1"
+        :y1="part.y1"
+        :x2="part.x2"
+        :y2="part.y2"
+        class="key-divider"
+      />
+    </template>
+
     <g
-      v-for="key in FLUTE_KEYS"
+      v-for="{ key, drawing } in drawnKeys"
       :key="key.id"
       class="key"
       :class="`key--${stateOf(key.id)}`"
@@ -217,9 +125,9 @@ function ariaLabel(key: FluteKey): string {
       @keydown.enter.prevent="toggle(key)"
       @keydown.space.prevent="toggle(key)"
     >
-      <rect v-if="interactive" v-bind="LAYOUT[key.id].hit" class="hit" />
+      <rect v-if="interactive" v-bind="drawing.hit" class="hit" />
 
-      <template v-for="(part, index) in LAYOUT[key.id].parts" :key="index">
+      <template v-for="(part, index) in drawing.parts" :key="index">
         <circle
           v-if="part.s === 'circle'"
           :cx="part.cx"
@@ -236,6 +144,16 @@ function ariaLabel(key: FluteKey): string {
           :rx="part.rx"
           class="key-shape"
         />
+        <ellipse
+          v-else-if="part.s === 'ellipse'"
+          :cx="part.cx"
+          :cy="part.cy"
+          :rx="part.rx"
+          :ry="part.ry"
+          :transform="`rotate(${part.rotate} ${part.cx} ${part.cy})`"
+          class="key-shape"
+        />
+        <path v-else-if="part.s === 'path'" :d="part.d" class="key-shape" />
         <line
           v-else
           :x1="part.x1"
@@ -250,12 +168,23 @@ function ariaLabel(key: FluteKey): string {
            when it applies, so a normal fingering shows plain keys as on the
            printed chart. -->
       <circle
-        v-if="stateOf(key.id) === 'vented' && LAYOUT[key.id].ring"
-        :cx="LAYOUT[key.id].ring!.cx"
-        :cy="LAYOUT[key.id].ring!.cy"
-        :r="LAYOUT[key.id].ring!.r * 0.5"
+        v-if="stateOf(key.id) === 'vented' && drawing.ring"
+        :cx="drawing.ring.cx"
+        :cy="drawing.ring.cy"
+        :r="drawing.ring.r * 0.5"
         class="key-vent"
       />
+
+      <text
+        v-if="drawing.text"
+        :x="drawing.text.x"
+        :y="drawing.text.y"
+        :font-size="drawing.text.size ?? 12"
+        class="key-label"
+        aria-hidden="true"
+      >
+        {{ key.label }}
+      </text>
     </g>
   </svg>
 </template>
@@ -285,6 +214,26 @@ function ariaLabel(key: FluteKey): string {
   transition: stroke 120ms ease;
 }
 
+.key-divider {
+  stroke: var(--color-ink-400);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.key-label {
+  fill: var(--color-ink-200);
+  font-family: inherit;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  user-select: none;
+}
+
+.key--pressed .key-label {
+  fill: var(--color-ink-950);
+}
+
 .key-vent {
   fill: var(--color-ink-950);
 }
@@ -296,13 +245,13 @@ function ariaLabel(key: FluteKey): string {
 /* ── Pressed ──────────────────────────────────────────────────────────── */
 .key--pressed .key-shape,
 .key--vented .key-shape {
-  fill: var(--color-brass-400);
-  stroke: var(--color-brass-300);
+  fill: var(--color-accent-400);
+  stroke: var(--color-accent-300);
 }
 
 .key--pressed .key-arm,
 .key--vented .key-arm {
-  stroke: var(--color-brass-400);
+  stroke: var(--color-accent-400);
 }
 
 .key--unavailable {
@@ -315,7 +264,7 @@ function ariaLabel(key: FluteKey): string {
 }
 
 .key-chart--interactive .key:not(.key--unavailable):hover .key-shape {
-  stroke: var(--color-brass-400);
+  stroke: var(--color-accent-400);
 }
 
 .key-chart--interactive .key:focus-visible {
@@ -323,7 +272,7 @@ function ariaLabel(key: FluteKey): string {
 }
 
 .key-chart--interactive .key:focus-visible .key-shape {
-  stroke: var(--color-brass-300);
+  stroke: var(--color-accent-300);
   stroke-width: 4;
 }
 </style>

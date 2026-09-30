@@ -1,11 +1,13 @@
-import { type Fingering, type FingeringSpec, resolveFingering } from '@/domain/fingering'
+import type { CodeGrammar, FingeringSpec } from '@/domain/fingering'
+import type { KeyId } from '@/domain/keys'
 
 /**
  * Fingering database for the standard Boehm-system transverse flute.
  *
  * Source: The Woodwind Fingering Guide, basic fingering charts for flute,
  * https://www.wfg.woodwind.org/flute/ (octaves 1–3). Codes are transcribed in
- * that guide's own notation — see `src/domain/fingering.ts` for the grammar.
+ * that guide's own notation — see `src/domain/fingering.ts` for the shape and
+ * `FLUTE_GRAMMAR` below for the tokens.
  *
  * Range: B3 (B footjoint) through C7.
  *
@@ -18,7 +20,33 @@ import { type Fingering, type FingeringSpec, resolveFingering } from '@/domain/f
  *    set legitimately maps to two notes. That is not a data error — it is the
  *    whole reason feature 1 reports several octaves for one fingering.
  */
-const SPECS: FingeringSpec[] = [
+/**
+ * Thumb: `T` (B natural lever), `Bb` (Briccialdi), `-` (off). WFG writes both
+ * `T` and `B` for the B-natural thumb lever.
+ *
+ * The extra-key tokens are shared by both hands, as in the WFG charts: the left
+ * pinky G♯, the right pinky E♭, the trill keys and the footjoint keys.
+ */
+const AUX_TOKENS: Record<string, KeyId> = {
+  'G#': 'L_GSHARP',
+  Eb: 'R_EFLAT',
+  'C#': 'FOOT_CSHARP',
+  C: 'FOOT_C',
+  B: 'FOOT_B',
+  D: 'TRILL_D',
+  'D#': 'TRILL_DSHARP',
+  gz: 'GIZMO',
+}
+
+export const FLUTE_GRAMMAR: CodeGrammar = {
+  thumb: { T: 'THUMB_B', B: 'THUMB_B', Bb: 'THUMB_BB', '-': null },
+  leftStack: ['L1', 'L2', 'L3'],
+  rightStack: ['R1', 'R2', 'R3'],
+  leftAux: AUX_TOKENS,
+  rightAux: AUX_TOKENS,
+}
+
+export const FLUTE_SPECS: FingeringSpec[] = [
   // ── First octave ────────────────────────────────────────────────────────────
   { note: 'B3', code: 'T 123 | 123 B', kind: 'primary', comment: 'Requires a B footjoint.' },
   { note: 'C4', code: 'T 123 | 123 C', kind: 'primary' },
@@ -132,5 +160,3 @@ const SPECS: FingeringSpec[] = [
     comment: 'B footjoint: add the gizmo key for a cleaner, more responsive high C.',
   },
 ]
-
-export const FINGERINGS: readonly Fingering[] = SPECS.map(resolveFingering)

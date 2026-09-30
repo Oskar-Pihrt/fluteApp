@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { noteRange } from '@/domain/lookup'
+import { FLUTE } from '@/instruments'
 import { recognise } from './recognise'
 import { renderScore, simplePhrase } from './testing/render'
 import { createBitmap } from './bitmap'
 
-const PLAYABLE = noteRange({ footJoint: 'B', openHole: false }).map((entry) => entry.note)
+const PLAYABLE = noteRange({ instrument: FLUTE, config: ['bFoot'] }).map((entry) => entry.note)
 
 function pitches(bitmap: Parameters<typeof recognise>[0]) {
   return recognise(bitmap, { playableNotes: PLAYABLE }).result.notes.map((note) => note.note)

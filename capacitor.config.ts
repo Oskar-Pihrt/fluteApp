@@ -7,7 +7,7 @@ const config: CapacitorConfig = {
   android: {
     // The app is a dark-UI reference tool; a light WebView flash on launch is
     // jarring next to it.
-    backgroundColor: '#0b1020',
+    backgroundColor: '#191A19',
   },
 }
 

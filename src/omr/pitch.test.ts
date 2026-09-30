@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { noteRange } from '@/domain/lookup'
+import { FLUTE } from '@/instruments'
 import { recognise } from './recognise'
 import { renderScore, type SyntheticNote } from './testing/render'
 import { lettersAlteredBy } from './pitch'
 
-const PLAYABLE = noteRange({ footJoint: 'B', openHole: false }).map((entry) => entry.note)
+const PLAYABLE = noteRange({ instrument: FLUTE, config: ['bFoot'] }).map((entry) => entry.note)
 
 const SPACE = 18
 const TOP = 90

@@ -32,6 +32,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'Sheet', parent: 'sheets' },
   },
   {
+    path: '/ear',
+    name: 'ear',
+    component: () => import('@/views/EarTrainerView.vue'),
+    meta: { title: 'Ear' },
+  },
+  {
     path: '/settings',
     name: 'settings',
     component: () => import('@/views/SettingsView.vue'),

@@ -1,28 +1,40 @@
 import { Note } from 'tonal'
-import { FINGERINGS } from '@/data/fingerings'
+import type { Instrument, InstrumentConfig } from '@/instruments/types'
 import type { Fingering, FingeringKind } from './fingering'
 import { type KeyId, keyDistance, keySetId } from './keys'
 
-/** The player's instrument, so results only show fingerings they can actually play. */
-export interface FluteConfig {
-  footJoint: 'C' | 'B'
-  openHole: boolean
+/**
+ * The instrument being looked up, and the player's setup of it — so results
+ * only show fingerings they can actually play.
+ */
+export interface InstrumentContext {
+  instrument: Instrument
+  config: InstrumentConfig
 }
 
-export const DEFAULT_FLUTE_CONFIG: FluteConfig = { footJoint: 'C', openHole: false }
-
-export function isPlayable(fingering: Fingering, config: FluteConfig): boolean {
-  if (fingering.footJoint === 'B' && config.footJoint !== 'B') return false
-  if (fingering.requiresOpenHole && !config.openHole) return false
-  return true
+export function isPlayable(fingering: Fingering, config: InstrumentConfig): boolean {
+  return fingering.requires.every((r) => config.includes(r))
 }
 
-const BY_KEY_SET = new Map<string, Fingering[]>()
-for (const fingering of FINGERINGS) {
-  const id = keySetId(fingering.keys)
-  const bucket = BY_KEY_SET.get(id)
-  if (bucket) bucket.push(fingering)
-  else BY_KEY_SET.set(id, [fingering])
+/** Keys the player's instrument doesn't have — shown faint on the chart. */
+export function unavailableKeys({ instrument, config }: InstrumentContext): KeyId[] {
+  return instrument.keys.filter((k) => k.requires && !config.includes(k.requires)).map((k) => k.id)
+}
+
+const INDEXES = new WeakMap<Instrument, Map<string, Fingering[]>>()
+
+function byKeySet(instrument: Instrument): Map<string, Fingering[]> {
+  let index = INDEXES.get(instrument)
+  if (index) return index
+  index = new Map()
+  for (const fingering of instrument.fingerings) {
+    const id = keySetId(fingering.keys)
+    const bucket = index.get(id)
+    if (bucket) bucket.push(fingering)
+    else index.set(id, [fingering])
+  }
+  INDEXES.set(instrument, index)
+  return index
 }
 
 const KIND_ORDER: Record<FingeringKind, number> = {
@@ -42,8 +54,8 @@ function byPitchThenKind(a: Fingering, b: Fingering): number {
  * Returns several results when a fingering is shared across octaves (which is
  * the norm for the first two octaves), ordered low to high.
  */
-export function notesForKeys(keys: readonly KeyId[], config: FluteConfig): Fingering[] {
-  const matches = BY_KEY_SET.get(keySetId(keys)) ?? []
+export function notesForKeys(keys: readonly KeyId[], { instrument, config }: InstrumentContext): Fingering[] {
+  const matches = byKeySet(instrument).get(keySetId(keys)) ?? []
   return matches.filter((f) => isPlayable(f, config)).sort(byPitchThenKind)
 }
 
@@ -59,11 +71,12 @@ export interface NearMatch {
  */
 export function nearestFingerings(
   keys: readonly KeyId[],
-  config: FluteConfig,
+  { instrument, config }: InstrumentContext,
   limit = 4,
 ): NearMatch[] {
   const seenNotes = new Set<string>()
-  return FINGERINGS.filter((f) => isPlayable(f, config))
+  return instrument.fingerings
+    .filter((f) => isPlayable(f, config))
     .map((fingering) => ({ fingering, distance: keyDistance(keys, fingering.keys) }))
     .filter((m) => m.distance > 0)
     .sort(
@@ -83,17 +96,17 @@ export function nearestFingerings(
 }
 
 /** Feature 2 — every documented way to play one note. */
-export function fingeringsForNote(note: string, config: FluteConfig): Fingering[] {
+export function fingeringsForNote(note: string, { instrument, config }: InstrumentContext): Fingering[] {
   const midi = Note.midi(note)
   if (midi == null) return []
-  return FINGERINGS.filter((f) => f.midi === midi && isPlayable(f, config)).sort(
-    (a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind],
-  )
+  return instrument.fingerings
+    .filter((f) => f.midi === midi && isPlayable(f, config))
+    .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind])
 }
 
 /** The chromatic range covered by the database, low to high, for the library list. */
-export function noteRange(config: FluteConfig): { note: string; midi: number }[] {
-  const playable = FINGERINGS.filter((f) => isPlayable(f, config))
+export function noteRange({ instrument, config }: InstrumentContext): { note: string; midi: number }[] {
+  const playable = instrument.fingerings.filter((f) => isPlayable(f, config))
   const midis = [...new Set(playable.map((f) => f.midi))].sort((a, b) => a - b)
   return midis.map((midi) => ({ midi, note: canonicalNote(midi) }))
 }
@@ -129,16 +142,19 @@ export function hasEnharmonic(note: string): boolean {
 }
 
 /**
- * Chart notation with real accidental glyphs: "T 1-- | 1-- E♭".
- * Only the key tokens are rewritten — the dashes and digits are left alone.
+ * What a written note actually sounds as on the instrument: itself on the
+ * flute, a major ninth lower on the tenor sax. Flat-preferring, since that is
+ * how concert pitch for a B♭ instrument is usually spelled ("A♭3").
  */
-export function prettyCode(code: string): string {
-  return code.replace(/\b(?:Bb|Eb|C#|D#|G#)\b/g, (token) =>
-    token.replace('#', '♯').replace('b', '♭'),
-  )
+export function soundingNote(note: string, instrument: Instrument): string | null {
+  const midi = Note.midi(note)
+  if (midi == null) return null
+  if (!instrument.transposeSemitones) return note
+  return Note.fromMidi(midi + instrument.transposeSemitones)
 }
 
-/** Concert-pitch frequency in Hz (A4 = 440). */
-export function noteFrequency(note: string): number | null {
-  return Note.freq(note)
+/** Sounding frequency in Hz (A4 = 440) of a written note. */
+export function noteFrequency(note: string, instrument: Instrument): number | null {
+  const sounding = soundingNote(note, instrument)
+  return sounding == null ? null : Note.freq(sounding)
 }

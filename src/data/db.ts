@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
+import type { InstrumentId } from '@/instruments/types'
 
 /**
  * Local, offline-first storage. No accounts and no server.
@@ -19,6 +20,13 @@ export interface Sheet {
   /** Natural pixel size of the stored image, for correct aspect-ratio boxes. */
   imageWidth: number
   imageHeight: number
+  /**
+   * The instrument this sheet was made for; notes are stored in its written
+   * pitch. Absent means the flute, which is all there was before the switch.
+   * Unindexed like `bbox` below, so no Dexie version bump — the library
+   * filters in memory.
+   */
+  instrument?: InstrumentId
 }
 
 export interface SheetNote {
