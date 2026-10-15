@@ -238,9 +238,46 @@ const hasDetected = computed(() => draft.value.some((entry) => entry.source === 
 
 function removeAt(index: number) {
   draft.value.splice(index, 1)
+  // Keep the staff positions aligned with the notes they belong to.
+  detectedRelatives.value.splice(index, 1)
   if (selectedIndex.value !== null && selectedIndex.value >= draft.value.length) {
     selectedIndex.value = draft.value.length ? draft.value.length - 1 : null
   }
+}
+
+/**
+ * Quick corrections for the commonest misreads: a semitone (a missed or
+ * misread accidental) and a staff step (a notehead read a line too high or
+ * low). The fingering choice is reset — it belonged to the old pitch.
+ */
+function shiftSemitone(index: number, delta: number) {
+  const midi = Note.midi(draft.value[index].note)
+  if (midi == null) return
+  draft.value[index] = { ...draft.value[index], note: canonicalNote(midi + delta), chosenFingeringId: undefined }
+  // An octave moves the note seven staff steps; keep that if the key is re-applied.
+  if (Math.abs(delta) === 12 && detectedRelatives.value[index] != null) detectedRelatives.value[index] += Math.sign(delta) * 7
+  if (settings.audioEnabled) playNote(draft.value[index].note, context.value.instrument, 0.4)
+}
+
+function shiftStep(index: number, delta: number) {
+  const parsed = Note.get(draft.value[index].note)
+  if (parsed.empty || parsed.oct == null) return
+  const diatonic = parsed.oct * 7 + parsed.step + delta
+  const letter = 'CDEFGAB'[((diatonic % 7) + 7) % 7]
+  const octave = Math.floor(diatonic / 7)
+  // The new line or space takes the key signature's accidental, if one is known.
+  const accidental = keyOverride.value ? (lettersAlteredBy(keyOverride.value).get(letter) ?? '') : ''
+  draft.value[index] = { ...draft.value[index], note: `${letter}${accidental}${octave}`, chosenFingeringId: undefined }
+  if (detectedRelatives.value[index] != null) detectedRelatives.value[index] += delta
+  if (settings.audioEnabled) playNote(draft.value[index].note, context.value.instrument, 0.4)
+}
+
+/** A copy of the selected note right after it, to fix a note detection missed. */
+function insertAfter(index: number) {
+  const entry = draft.value[index]
+  draft.value.splice(index + 1, 0, { note: entry.note, source: 'manual' })
+  detectedRelatives.value.splice(index + 1, 0, detectedRelatives.value[index])
+  selectedIndex.value = index + 1
 }
 
 function chooseFingering(index: number, fingering: Fingering) {
@@ -633,6 +670,28 @@ async function deleteSheet() {
           @click="removeAt(selectedIndex!)"
         >
           Remove
+        </button>
+      </div>
+
+      <!-- One-tap fixes for what detection most often gets wrong. -->
+      <div class="flex flex-wrap gap-1.5" aria-label="Correct this note">
+        <button
+          v-for="fix in [
+            { label: '♭ −½', title: 'Down a semitone', run: () => shiftSemitone(selectedIndex!, -1) },
+            { label: '♯ +½', title: 'Up a semitone', run: () => shiftSemitone(selectedIndex!, 1) },
+            { label: '▼ step', title: 'Down a line or space', run: () => shiftStep(selectedIndex!, -1) },
+            { label: '▲ step', title: 'Up a line or space', run: () => shiftStep(selectedIndex!, 1) },
+            { label: '8vb', title: 'Down an octave', run: () => shiftSemitone(selectedIndex!, -12) },
+            { label: '8va', title: 'Up an octave', run: () => shiftSemitone(selectedIndex!, 12) },
+            { label: '+ after', title: 'Insert a note after this one', run: () => insertAfter(selectedIndex!) },
+          ]"
+          :key="fix.label"
+          type="button"
+          :title="fix.title"
+          class="rounded-md border border-ink-600 px-2 py-1 text-[11px] font-medium text-ink-200 transition-colors hover:border-accent-400"
+          @click="fix.run()"
+        >
+          {{ fix.label }}
         </button>
       </div>
 

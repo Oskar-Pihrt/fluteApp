@@ -276,39 +276,7 @@ export function recognise(gray: Bitmap, options: RecogniseOptions = {}): Recogni
     })
   }
 
-  if (chords.length) {
-    warnings.push({
-      code: 'chord-found',
-      message: `Found ${chords.length} stacked ${chords.length === 1 ? 'notehead' : 'noteheads'}. Kept the top note of each — check those.`,
-    })
-  }
-
-  const uncertain = withBoxes
-    .map((note, index) => ({ note, index }))
-    .filter(({ note }) => note.accidentalUncertain)
-    .map(({ index }) => index)
-  if (uncertain.length) {
-    warnings.push({
-      code: 'accidental-unclear',
-      message: `Could not read ${uncertain.length} ${uncertain.length === 1 ? 'accidental' : 'accidentals'} for certain.`,
-      noteIndices: uncertain,
-    })
-  }
-
-  if (options.playableNotes?.length) {
-    const playable = new Set(options.playableNotes.map((note) => Note.midi(note)))
-    const outOfRange = withBoxes
-      .map((note, index) => ({ midi: Note.midi(note.note), index }))
-      .filter(({ midi }) => midi != null && !playable.has(midi))
-      .map(({ index }) => index)
-    if (outOfRange.length) {
-      warnings.push({
-        code: 'out-of-range',
-        message: `${outOfRange.length} ${outOfRange.length === 1 ? 'note is' : 'notes are'} outside the instrument's range — probably an octave misread.`,
-        noteIndices: outOfRange,
-      })
-    }
-  }
+  warnings.push(...noteWarnings(withBoxes, chords.length, options.playableNotes))
 
   return {
     result: {
@@ -357,7 +325,7 @@ function hasVerticalOverlap(staves: Staff[]): boolean {
  * The corners are transformed individually and re-bounded, since undoing the
  * deskew rotates the box and an axis-aligned result has to enclose it.
  */
-function normaliseBox(
+export function normaliseBox(
   box: RecognisedNote['bbox'],
   analysed: Bitmap,
   skewDeg: number,
@@ -382,4 +350,47 @@ function normaliseBox(
     width: (Math.max(...xs) - minX) / original.width,
     height: (Math.max(...ys) - minY) / original.height,
   }
+}
+
+/**
+ * Warnings about specific notes, shared by both recognisers: chords reduced to
+ * their top note, accidentals that could not be read, and notes outside the
+ * instrument's range (usually an octave misread).
+ */
+export function noteWarnings(notes: RecognisedNote[], chordCount: number, playableNotes?: string[]): OmrWarning[] {
+  const warnings: OmrWarning[] = []
+  if (chordCount) {
+    warnings.push({
+      code: 'chord-found',
+      message: `Found ${chordCount} stacked ${chordCount === 1 ? 'notehead' : 'noteheads'}. Kept the top note of each — check those.`,
+    })
+  }
+
+  const uncertain = notes
+    .map((note, index) => ({ note, index }))
+    .filter(({ note }) => note.accidentalUncertain)
+    .map(({ index }) => index)
+  if (uncertain.length) {
+    warnings.push({
+      code: 'accidental-unclear',
+      message: `Could not read ${uncertain.length} ${uncertain.length === 1 ? 'accidental' : 'accidentals'} for certain.`,
+      noteIndices: uncertain,
+    })
+  }
+
+  if (playableNotes?.length) {
+    const playable = new Set(playableNotes.map((note) => Note.midi(note)))
+    const outOfRange = notes
+      .map((note, index) => ({ midi: Note.midi(note.note), index }))
+      .filter(({ midi }) => midi != null && !playable.has(midi))
+      .map(({ index }) => index)
+    if (outOfRange.length) {
+      warnings.push({
+        code: 'out-of-range',
+        message: `${outOfRange.length} ${outOfRange.length === 1 ? 'note is' : 'notes are'} outside the instrument's range — probably an octave misread.`,
+        noteIndices: outOfRange,
+      })
+    }
+  }
+  return warnings
 }

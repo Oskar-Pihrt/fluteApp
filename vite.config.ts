@@ -13,7 +13,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       // The ear trainer's piano samples (~1 MB) are precached so it works offline.
-      workbox: { globPatterns: ['**/*.{js,css,html,svg,png,m4a,woff2,woff}'] },
+      // The note detector's network (~0.3 MB) too, so detection works offline.
+      workbox: { globPatterns: ['**/*.{js,css,html,svg,png,m4a,woff2,woff}', 'omr/detector.{json,bin}'] },
       manifest: {
         name: 'FluteApp — transverse flute fingerings',
         short_name: 'FluteApp',

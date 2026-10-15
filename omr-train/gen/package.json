@@ -1,0 +1,9 @@
+{
+  "name": "omr-train-gen",
+  "private": true,
+  "type": "module",
+  "description": "Synthetic training pages for the sheet-music recogniser. Dev-only; nothing here ships in the app.",
+  "dependencies": {
+    "verovio": "^6.3.0"
+  }
+}

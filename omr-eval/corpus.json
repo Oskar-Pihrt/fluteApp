@@ -1,0 +1,254 @@
+{
+  "source": "https://www.mutopiaproject.org",
+  "note": "Monophonic treble-clef solo parts. Each entry keeps its Mutopia licence; the files themselves are downloaded by scripts/build-lilypond.mjs, not committed.",
+  "pieces": [
+    {
+      "id": "Sonata_solo_flute_a_min-fl",
+      "title": "Sonata in a minor for solo flute",
+      "instrument": "Flute",
+      "license": "Creative Commons Attribution-ShareAlike 2.5",
+      "ly": "https://www.mutopiaproject.org/ftp/BachCPE/Wq132/Sonata_solo_flute_a_min-fl/Sonata_solo_flute_a_min-fl.ly",
+      "split": "eval"
+    },
+    {
+      "id": "bwv1013",
+      "title": "Partita in a minor",
+      "instrument": "Flute",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/BachJS/BWV1013/bwv1013/bwv1013.ly",
+      "split": "eval"
+    },
+    {
+      "id": "bagatelle1",
+      "title": "In a Summer Garden",
+      "instrument": "Flute",
+      "license": "Creative Commons Attribution 3.0",
+      "ly": "https://www.mutopiaproject.org/ftp/BrownCJ/bagatelle1/bagatelle1.ly",
+      "split": "eval"
+    },
+    {
+      "id": "bagatelle2",
+      "title": "A Tango Trifle",
+      "instrument": "Flute",
+      "license": "Creative Commons Attribution 3.0",
+      "ly": "https://www.mutopiaproject.org/ftp/BrownCJ/bagatelle2/bagatelle2.ly",
+      "split": "eval"
+    },
+    {
+      "id": "Capricio",
+      "title": "Capricio",
+      "instrument": "Flute",
+      "license": "Creative Commons Attribution-ShareAlike 3.0",
+      "ly": "https://www.mutopiaproject.org/ftp/QuantzJJ/Capricio/Capricio.ly",
+      "split": "eval"
+    },
+    {
+      "id": "Minuetto",
+      "title": "Minuetto",
+      "instrument": "Flute",
+      "license": "Creative Commons Attribution-ShareAlike 3.0",
+      "ly": "https://www.mutopiaproject.org/ftp/QuantzJJ/Minuetto/Minuetto.ly",
+      "split": "eval"
+    },
+    {
+      "id": "division-violin-02",
+      "title": "2. Duke of Norfolk, or Paul's Steeple",
+      "instrument": "Violin",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/Anonymous/division-violin-02/division-violin-02.ly",
+      "split": "eval"
+    },
+    {
+      "id": "division-violin-04",
+      "title": "4. Old Simon the King",
+      "instrument": "Violin",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/Anonymous/division-violin-04/division-violin-04.ly",
+      "split": "train"
+    },
+    {
+      "id": "division-violin-23",
+      "title": "23. Johnny Cock thy Beaver: A Scotch Tune to a Ground",
+      "instrument": "Violin",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/Anonymous/division-violin-23/division-violin-23.ly",
+      "split": "train"
+    },
+    {
+      "id": "division-violin-two-27",
+      "title": "27. Greensleeves to a Ground with Division",
+      "instrument": "Violin",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/Anonymous/division-violin-two-27/division-violin-two-27.ly",
+      "split": "eval"
+    },
+    {
+      "id": "bach-bwv1041-part-violin-solo",
+      "title": "Violin Concerto Nº 1 - Violin Solo",
+      "instrument": "Violin",
+      "license": "Creative Commons Attribution-ShareAlike 4.0",
+      "ly": "https://www.mutopiaproject.org/ftp/BachJS/BWV1041/bach-bwv1041-part-violin-solo/bach-bwv1041-part-violin-solo-lys.zip",
+      "split": "eval"
+    },
+    {
+      "id": "division-violin-13",
+      "title": "13. A Prelude for the Violin",
+      "instrument": "Violin",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/BaltzarT/division-violin-13/division-violin-13.ly",
+      "split": "eval"
+    },
+    {
+      "id": "division-violin-19",
+      "title": "19. A Division upon a Ground",
+      "instrument": "Violin",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/BanisterJ/division-violin-19/division-violin-19.ly",
+      "split": "train"
+    },
+    {
+      "id": "sonata",
+      "title": "Sonata in G minor",
+      "instrument": "Violin",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/EcclesH/sonata/sonata.ly",
+      "split": "eval"
+    },
+    {
+      "id": "division-violin-05",
+      "title": "5. Faronell's Division on a Ground",
+      "instrument": "Violin",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/FarinelM/division-violin-05/division-violin-05.ly",
+      "split": "train"
+    },
+    {
+      "id": "CanonInD",
+      "title": "Canon in D",
+      "instrument": "Violin",
+      "license": "Creative Commons Attribution 3.0",
+      "ly": "https://www.mutopiaproject.org/ftp/PachelbelJ/CanonInD/CanonInD.ly",
+      "split": "eval"
+    },
+    {
+      "id": "Caprice_1",
+      "title": "24 Caprices for Solo Violin: 01",
+      "instrument": "Violin",
+      "license": "Creative Commons Attribution-ShareAlike 3.0",
+      "ly": "https://www.mutopiaproject.org/ftp/PaganiniN/O1/Caprice_1/Caprice_1-lys.zip",
+      "split": "train"
+    },
+    {
+      "id": "Caprice_2",
+      "title": "24 Caprices for Solo Violin: 02",
+      "instrument": "Violin",
+      "license": "Creative Commons Attribution-ShareAlike 3.0",
+      "ly": "https://www.mutopiaproject.org/ftp/PaganiniN/O1/Caprice_2/Caprice_2-lys.zip",
+      "split": "train"
+    },
+    {
+      "id": "Caprice_3",
+      "title": "24 Caprices for Solo Violin: 03",
+      "instrument": "Violin",
+      "license": "Creative Commons Attribution-ShareAlike 3.0",
+      "ly": "https://www.mutopiaproject.org/ftp/PaganiniN/O1/Caprice_3/Caprice_3-lys.zip",
+      "split": "train"
+    },
+    {
+      "id": "Caprice_23",
+      "title": "24 Caprices for Solo Violin: 23",
+      "instrument": "Violin",
+      "license": "Creative Commons Attribution-ShareAlike 4.0",
+      "ly": "https://www.mutopiaproject.org/ftp/PaganiniN/O1/Caprice_23/Caprice_23.ly",
+      "split": "eval"
+    },
+    {
+      "id": "Caprice_24",
+      "title": "24 Caprices for Solo Violin: 24",
+      "instrument": "Violin",
+      "license": "Creative Commons Attribution-ShareAlike 4.0",
+      "ly": "https://www.mutopiaproject.org/ftp/PaganiniN/O1/Caprice_24/Caprice_24.ly",
+      "split": "train"
+    },
+    {
+      "id": "division-violin-03",
+      "title": "3. Mr. Powlwheel's Division on a Ground",
+      "instrument": "Violin",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/Powlwheel/division-violin-03/division-violin-03.ly",
+      "split": "train"
+    },
+    {
+      "id": "division-violin-01",
+      "title": "1. Select Divisions upon a Ground",
+      "instrument": "Violin",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/Reddings/division-violin-01/division-violin-01.ly",
+      "split": "train"
+    },
+    {
+      "id": "sonate",
+      "title": "Sonata 1 for Unaccompanied Violin",
+      "instrument": "Violin",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/RegerM/O42/sonate/sonate-lys.zip",
+      "split": "train"
+    },
+    {
+      "id": "sonate2",
+      "title": "Sonata 2 for Unaccompanied Violin",
+      "instrument": "Violin",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/RegerM/O42/sonate2/sonate2-lys.zip",
+      "split": "train"
+    },
+    {
+      "id": "Hans_Sitt-100_Etudes_Op32-Book1",
+      "title": "100 Etudes",
+      "instrument": "Violin",
+      "license": "Creative Commons Attribution-ShareAlike 2.5",
+      "ly": "https://www.mutopiaproject.org/ftp/SittH/O32/Hans_Sitt-100_Etudes_Op32-Book1/Hans_Sitt-100_Etudes_Op32-Book1-lys.zip",
+      "split": "train"
+    },
+    {
+      "id": "CavalliniNo1",
+      "title": "Thirty Caprices: No. 1",
+      "instrument": "Clarinet",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/CavalliniE/CavalliniNo1/CavalliniNo1.ly",
+      "split": "eval"
+    },
+    {
+      "id": "CavalliniNo3",
+      "title": "Thirty Caprices: No. 3",
+      "instrument": "Clarinet",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/CavalliniE/CavalliniNo3/CavalliniNo3.ly",
+      "split": "eval"
+    },
+    {
+      "id": "CavalliniNo4",
+      "title": "Thirty Caprices: No. 4",
+      "instrument": "Clarinet",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/CavalliniE/CavalliniNo4/CavalliniNo4.ly",
+      "split": "eval"
+    },
+    {
+      "id": "CavalliniNo7",
+      "title": "Thirty Caprices: No. 7",
+      "instrument": "Clarinet",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/CavalliniE/CavalliniNo7/CavalliniNo7.ly",
+      "split": "eval"
+    },
+    {
+      "id": "CavalliniNo8",
+      "title": "Thirty Caprices: No. 8",
+      "instrument": "Clarinet",
+      "license": "Public Domain",
+      "ly": "https://www.mutopiaproject.org/ftp/CavalliniE/CavalliniNo8/CavalliniNo8.ly",
+      "split": "eval"
+    }
+  ]
+}

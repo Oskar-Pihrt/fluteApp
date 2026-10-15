@@ -1,6 +1,8 @@
 /// <reference lib="webworker" />
 import { grayscaleFromRgba } from './bitmap'
+import { loadNet, type Net, type NetManifest } from './net'
 import { recognise } from './recognise'
+import { recogniseWithNet } from './recogniseNet'
 import type { Bitmap, OmrProgress, OmrResult } from './types'
 
 /**
@@ -34,13 +36,39 @@ export type WorkerResponse =
   | { type: 'done'; result: OmrResult; debug?: SerialisedDebug }
   | { type: 'error'; message: string }
 
-self.onmessage = (event: MessageEvent<RecogniseRequest>) => {
+/**
+ * The detector network, fetched once per worker. It ships in the app (and the
+ * PWA precache), so this works offline; if it cannot be loaded for any reason
+ * the heuristic recogniser runs instead.
+ */
+let netPromise: Promise<Net | null> | null = null
+function getNet(): Promise<Net | null> {
+  netPromise ??= (async () => {
+    try {
+      const base = new URL(`${import.meta.env.BASE_URL}omr/detector`, self.location.href).href
+      const [manifest, weights] = await Promise.all([
+        fetch(`${base}.json`).then((r) => (r.ok ? (r.json() as Promise<NetManifest>) : Promise.reject(new Error(r.statusText)))),
+        fetch(`${base}.bin`).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.statusText)))),
+      ])
+      return loadNet(manifest, weights)
+    } catch {
+      return null
+    }
+  })()
+  return netPromise
+}
+
+self.onmessage = async (event: MessageEvent<RecogniseRequest>) => {
   const { rgba, width, height, debug, playableNotes } = event.data
 
   try {
     const gray = grayscaleFromRgba(rgba, width, height)
+    // The stage inspector shows the heuristic pipeline's bitmaps, so a debug run
+    // uses that pipeline; it is a development tool only.
+    const net = debug ? null : await getNet()
+    const run = net ? (g: typeof gray, o: Parameters<typeof recognise>[1]) => recogniseWithNet(g, net, o) : recognise
 
-    const { result, debug: debugBitmaps } = recognise(gray, {
+    const { result, debug: debugBitmaps } = run(gray, {
       debug,
       playableNotes,
       onProgress: (progress) => {

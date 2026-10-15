@@ -105,7 +105,7 @@ function accidentalFor(
 }
 
 function spell(letter: string, octave: number, accidental: PrintedAccidental): string {
-  const suffix = accidental === '#' ? '#' : accidental === 'b' ? 'b' : ''
+  const suffix = accidental === 'x' ? '##' : accidental === 'n' ? '' : accidental
   return `${letter}${suffix}${octave}`
 }
 
@@ -122,7 +122,7 @@ export function derivePitches(options: DeriveOptions): RecognisedNote[] {
 
   // Accidentals currently in force, keyed by letter+octave. Cleared at each
   // barline, which is exactly the convention.
-  const active = new Map<string, '#' | 'b' | 'n'>()
+  const active = new Map<string, Exclude<PrintedAccidental, ''>>()
   let previousMeasure = -1
 
   const results: RecognisedNote[] = []
@@ -155,7 +155,7 @@ export function derivePitches(options: DeriveOptions): RecognisedNote[] {
     } else {
       const inForce = active.get(scopeKey)
       if (inForce) {
-        accidental = inForce === 'n' ? 'n' : inForce
+        accidental = inForce
       } else {
         accidental = keyAlterations.get(letter) ?? ''
       }

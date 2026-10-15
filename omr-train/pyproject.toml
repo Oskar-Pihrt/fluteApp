@@ -1,0 +1,19 @@
+[project]
+name = "omr-train"
+version = "0.1.0"
+description = "Training for the FluteApp sheet-music notehead/symbol detector. Dev-only."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "torch>=2.4",
+  "numpy>=1.26",
+  "pillow>=10",
+  "opencv-python-headless>=4.9",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

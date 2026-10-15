@@ -44,3 +44,14 @@ android/capacitor-cordova-android-plugins/
 *.aab
 *.keystore
 *.jks
+
+# OMR eval and training: downloaded sources, rendered pages, tools and models
+# in progress are reproducible from the scripts, so none of it is committed.
+omr-eval/data/
+omr-eval/private/
+omr-eval/reports/*.json
+omr-train/.tools/
+omr-train/.venv/
+omr-train/data/
+omr-train/runs/
+__pycache__/

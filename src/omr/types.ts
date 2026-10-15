@@ -72,7 +72,8 @@ export interface Notehead {
   confidence: number
 }
 
-export type PrintedAccidental = '#' | 'b' | 'n' | ''
+/** `x` is a double sharp, `bb` a double flat. */
+export type PrintedAccidental = '#' | 'b' | 'n' | 'x' | 'bb' | ''
 
 export interface RecognisedNote {
   /** Scientific pitch, e.g. "F#5" — what `fingeringsForNote` consumes. */
@@ -88,6 +89,15 @@ export interface RecognisedNote {
   /** Normalised 0–1 against the *original* stored image, for the overlay. */
   bbox: Box
   confidence: number
+  /** A grace note (small notehead). */
+  grace?: boolean
+  /** Continues a tie from the previous, identical note. */
+  tied?: boolean
+  /**
+   * Octaves an ottava line moved this note: 1 under 8va, −1 under 8vb. Already
+   * included in `relative` and `note`.
+   */
+  octaveShift?: number
 }
 
 export interface KeySignature {
