@@ -1,8 +1,8 @@
-import type { TenorSaxKeyId } from '@/domain/keys'
+import type { SaxKeyId } from '@/domain/keys'
 import type { Box, ChartLayout, KeyDrawing } from '@/instruments/types'
 
 /**
- * The tenor saxophone's keys as a front-view fingering chart, matching the
+ * The saxophone's keys as a front-view fingering chart, matching the
  * standard labelled chart: the six main keys down the centre, the octave key
  * and front F (Aux) above them, the palm keys (C1, C2, C4) up to the right,
  * the left pinky table (G♯, B, C♯, B♭) beside the break between the hands, the
@@ -54,7 +54,7 @@ function shape(d: string, box: Box, text?: { x: number; y: number }): KeyDrawing
   return { parts: [{ s: 'path', d }], hit: pad(box), text }
 }
 
-const DRAWINGS: Record<TenorSaxKeyId, KeyDrawing> = {
+const DRAWINGS: Record<SaxKeyId, KeyDrawing> = {
   // Octave key: the thumb's teardrop, back and to the left of the top key.
   OCTAVE: shape(
     'M 34 50 Q 44 46 56 66 Q 66 84 60 96 Q 52 104 42 96 Q 30 84 32 66 Q 32 54 34 50 Z',
@@ -110,7 +110,7 @@ const DRAWINGS: Record<TenorSaxKeyId, KeyDrawing> = {
   ),
 }
 
-export const TENOR_SAX_CHART: ChartLayout = {
+export const SAX_CHART: ChartLayout = {
   width: 260,
   height: 556,
   pixelWidth: { sm: 96, md: 138, lg: 226 },

@@ -41,7 +41,7 @@ export function playNote(note: string, instrument: Instrument, durationSeconds =
   osc.frequency.value = frequency
   // Reedier tone for the sax: harmonic-rich sawtooth, tamed by a lowpass.
   let source: AudioNode = osc
-  if (instrument.id === 'tenorSax') {
+  if (instrument.family === 'sax') {
     osc.type = 'sawtooth'
     const filter = context.createBiquadFilter()
     filter.type = 'lowpass'

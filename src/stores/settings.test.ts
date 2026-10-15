@@ -17,6 +17,10 @@ describe('parseSettings', () => {
     expect(parseSettings(JSON.stringify({ instrument: 'kazoo' })).instrument).toBe('flute')
   })
 
+  it('keeps the alto sax', () => {
+    expect(parseSettings(JSON.stringify({ instrument: 'altoSax' })).instrument).toBe('altoSax')
+  })
+
   it('survives corrupt storage', () => {
     expect(parseSettings('{nope').instrument).toBe('flute')
     expect(parseSettings(null).instrument).toBe('flute')

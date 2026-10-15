@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { db, newId, type Sheet, type SheetNote } from '@/data/db'
 import { blobToBase64, base64ToBlob, prepareImage } from '@/data/images'
+import { transposeBetween } from '@/domain/lookup'
+import { getInstrument } from '@/instruments'
 import type { InstrumentId } from '@/instruments/types'
 
 /**
@@ -79,6 +81,29 @@ export const useSheetsStore = defineStore('sheets', () => {
         notes.map((note, index) => ({ ...note, index, id: newId(), sheetId })),
       )
       await db.sheets.update(sheetId, { updatedAt: Date.now() })
+    })
+    await loadAll()
+  }
+
+  /**
+   * Re-file a sheet under another instrument, rewriting every note into that
+   * instrument's written pitch so it still sounds the same. Chosen fingerings
+   * are dropped: they belong to the old instrument's keywork.
+   */
+  async function convertInstrument(sheetId: string, to: InstrumentId) {
+    const sheet = await db.sheets.get(sheetId)
+    if (!sheet) return
+    const from = getInstrument(sheet.instrument)
+    const target = getInstrument(to)
+    const notes = await notesFor(sheetId)
+    await db.transaction('rw', db.sheets, db.sheetNotes, async () => {
+      for (const row of notes) {
+        await db.sheetNotes.update(row.id, {
+          note: transposeBetween(row.note, from, target) ?? row.note,
+          chosenFingeringId: undefined,
+        })
+      }
+      await db.sheets.update(sheetId, { instrument: to, updatedAt: Date.now() })
     })
     await loadAll()
   }
@@ -182,6 +207,7 @@ export const useSheetsStore = defineStore('sheets', () => {
     updateMeta,
     remove,
     replaceNotes,
+    convertInstrument,
     exportBackup,
     importBackup,
   }

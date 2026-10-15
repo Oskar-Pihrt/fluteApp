@@ -9,6 +9,7 @@ export const FLUTE: Instrument = {
   name: 'Transverse flute',
   shortName: 'Flute',
   noun: 'flute',
+  family: 'flute',
   keys: FLUTE_KEYS,
   exclusiveGroups: FLUTE_EXCLUSIVE_GROUPS,
   grammar: FLUTE_GRAMMAR,

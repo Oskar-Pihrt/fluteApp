@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { FLUTE, TENOR_SAX } from '@/instruments'
+import { Note } from 'tonal'
+import { ALTO_SAX, FLUTE, TENOR_SAX } from '@/instruments'
 import { FLUTE_GRAMMAR } from '@/instruments/flute/fingerings'
 import { parseFingeringCode as parse } from './fingering'
 import {
@@ -9,6 +10,7 @@ import {
   noteRange,
   notesForKeys,
   soundingNote,
+  transposeBetween,
 } from './lookup'
 
 const C_FOOT = { instrument: FLUTE, config: [] } as const
@@ -171,6 +173,11 @@ describe('transposition', () => {
     expect(soundingNote('C#5', TENOR_SAX)).toBe('B3')
   })
 
+  it('sounds a major sixth below written on alto sax', () => {
+    expect(soundingNote('C5', ALTO_SAX)).toBe('Eb4')
+    expect(soundingNote('A4', ALTO_SAX)).toBe('C4')
+  })
+
   it('leaves flute pitches alone', () => {
     expect(soundingNote('D5', FLUTE)).toBe('D5')
   })
@@ -179,5 +186,37 @@ describe('transposition', () => {
     // Written A5 sounds G4.
     expect(noteFrequency('A5', TENOR_SAX)).toBeCloseTo(391.995, 2)
     expect(noteFrequency('A4', FLUTE)).toBeCloseTo(440, 5)
+  })
+})
+
+describe('transposeBetween', () => {
+  it('writes a flute part for alto at the same sounding pitch', () => {
+    expect(transposeBetween('C5', FLUTE, ALTO_SAX)).toBe('A5')
+    expect(transposeBetween('F#4', FLUTE, ALTO_SAX)).toBe('D#5')
+  })
+
+  it('writes a flute part for tenor a ninth up', () => {
+    expect(transposeBetween('C5', FLUTE, TENOR_SAX)).toBe('D6')
+  })
+
+  it('moves between saxophones by a fourth', () => {
+    expect(transposeBetween('D5', ALTO_SAX, TENOR_SAX)).toBe('G5')
+    expect(transposeBetween('G5', TENOR_SAX, ALTO_SAX)).toBe('D5')
+  })
+
+  it('round-trips', () => {
+    for (const note of ['C5', 'F#4', 'Bb4', 'E5']) {
+      const there = transposeBetween(note, FLUTE, ALTO_SAX)!
+      expect(Note.midi(transposeBetween(there, ALTO_SAX, FLUTE)!)).toBe(Note.midi(note))
+    }
+  })
+
+  it('simplifies double accidentals and E♯-style spellings', () => {
+    expect(transposeBetween('G#4', FLUTE, ALTO_SAX)).toBe('F5')
+    expect(transposeBetween('A#4', FLUTE, ALTO_SAX)).toBe('G5')
+  })
+
+  it('leaves a note alone between same-pitch instruments', () => {
+    expect(transposeBetween('C5', FLUTE, FLUTE)).toBe('C5')
   })
 })

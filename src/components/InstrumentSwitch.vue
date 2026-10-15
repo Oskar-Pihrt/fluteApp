@@ -11,7 +11,7 @@ const settings = useSettingsStore()
   <div
     role="radiogroup"
     aria-label="Instrument"
-    class="grid grid-cols-2 gap-0.5 rounded-lg border border-ink-700 bg-ink-950 p-0.5"
+    class="grid grid-cols-3 gap-0.5 rounded-lg border border-ink-700 bg-ink-950 p-0.5"
   >
     <button
       v-for="id in INSTRUMENT_IDS"
@@ -19,7 +19,7 @@ const settings = useSettingsStore()
       type="button"
       role="radio"
       :aria-checked="settings.instrumentId === id"
-      class="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
+      class="rounded-md px-1.5 py-1.5 text-xs font-semibold transition-colors"
       :class="
         settings.instrumentId === id
           ? 'bg-accent-400 text-ink-950'

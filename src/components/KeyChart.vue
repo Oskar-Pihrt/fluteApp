@@ -97,8 +97,8 @@ function ariaLabel(key: InstrumentKey): string {
     :role="interactive ? 'group' : 'img'"
     :aria-label="
       interactive
-        ? `${instrument.shortName} fingering — tap keys to select`
-        : `${instrument.shortName} fingering diagram`
+        ? `${instrument.name} fingering — tap keys to select`
+        : `${instrument.name} fingering diagram`
     "
   >
     <template v-for="(part, index) in chart.decorations ?? []" :key="`d${index}`">

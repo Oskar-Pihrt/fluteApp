@@ -60,7 +60,7 @@ export const useSettingsStore = defineStore('settings', () => {
   /** The player's setup of a given instrument, whether or not it is active. */
   function configFor(id: InstrumentId): InstrumentConfig {
     const config: Requirement[] = []
-    if (id === 'flute') {
+    if (getInstrument(id).family === 'flute') {
       if (footJoint.value === 'B') config.push('bFoot')
       if (openHole.value) config.push('openHole')
     } else if (saxHighFSharp.value) {

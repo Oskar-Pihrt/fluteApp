@@ -1,5 +1,5 @@
 import { FLUTE_KEY_IDS } from '@/instruments/flute/keys'
-import { TENOR_SAX_KEY_IDS } from '@/instruments/tenorSax/keys'
+import { SAX_KEY_IDS } from '@/instruments/saxophone/keys'
 
 /**
  * What a key *is*, independent of which instrument it belongs to.
@@ -18,8 +18,8 @@ import { TENOR_SAX_KEY_IDS } from '@/instruments/tenorSax/keys'
  */
 
 export type FluteKeyId = (typeof FLUTE_KEY_IDS)[number]
-export type TenorSaxKeyId = (typeof TENOR_SAX_KEY_IDS)[number]
-export type KeyId = FluteKeyId | TenorSaxKeyId
+export type SaxKeyId = (typeof SAX_KEY_IDS)[number]
+export type KeyId = FluteKeyId | SaxKeyId
 
 /** Which finger operates the key. */
 export type KeyGroup =
@@ -62,7 +62,7 @@ export function keysInGroup(keys: readonly InstrumentKey[], group: KeyGroup): Ke
 
 /** Canonical ordering, so two equal fingerings always serialise identically. */
 const KEY_ORDER = new Map<KeyId, number>(
-  [...new Set<KeyId>([...FLUTE_KEY_IDS, ...TENOR_SAX_KEY_IDS])].map((id, i) => [id, i]),
+  [...new Set<KeyId>([...FLUTE_KEY_IDS, ...SAX_KEY_IDS])].map((id, i) => [id, i]),
 )
 
 export function sortKeys(keys: readonly KeyId[]): KeyId[] {

@@ -93,7 +93,7 @@ const activeTab = computed(
         class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-ink-800 bg-ink-900/95 px-4 py-2.5 backdrop-blur md:hidden"
       >
         <p class="text-sm font-semibold text-ink-50">FluteApp</p>
-        <InstrumentSwitch class="w-48" />
+        <InstrumentSwitch class="w-52" />
       </header>
 
       <main class="mx-auto w-full max-w-3xl px-4 pt-5 pb-28 md:max-w-4xl md:px-10 md:py-9">

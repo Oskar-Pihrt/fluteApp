@@ -1,4 +1,4 @@
-import { Note } from 'tonal'
+import { Interval, Note } from 'tonal'
 import type { Instrument, InstrumentConfig } from '@/instruments/types'
 import type { Fingering, FingeringKind } from './fingering'
 import { type KeyId, keyDistance, keySetId } from './keys'
@@ -143,8 +143,9 @@ export function hasEnharmonic(note: string): boolean {
 
 /**
  * What a written note actually sounds as on the instrument: itself on the
- * flute, a major ninth lower on the tenor sax. Flat-preferring, since that is
- * how concert pitch for a B♭ instrument is usually spelled ("A♭3").
+ * flute, a major sixth lower on the alto sax and a major ninth lower on the
+ * tenor. Flat-preferring, since that is
+ * how concert pitch for E♭ and B♭ instruments is usually spelled ("A♭3").
  */
 export function soundingNote(note: string, instrument: Instrument): string | null {
   const midi = Note.midi(note)
@@ -157,4 +158,20 @@ export function soundingNote(note: string, instrument: Instrument): string | nul
 export function noteFrequency(note: string, instrument: Instrument): number | null {
   const sounding = soundingNote(note, instrument)
   return sounding == null ? null : Note.freq(sounding)
+}
+
+/**
+ * The same sounding pitch, written for a different instrument — how a flute
+ * part becomes an alto part. Spelled by interval rather than by semitone count,
+ * so keys stay readable (F♯ up a sixth is D♯, not E♭), with only double
+ * accidentals and E♯/B♭-style oddities simplified away.
+ */
+export function transposeBetween(note: string, from: Instrument, to: Instrument): string | null {
+  if (Note.midi(note) == null) return null
+  const semitones = from.transposeSemitones - to.transposeSemitones
+  if (!semitones) return note
+  const transposed = Note.transpose(note, Interval.fromSemitones(semitones))
+  const { alt } = Note.get(transposed)
+  // Keep a single sharp or flat as spelled; collapse anything more exotic.
+  return Math.abs(alt) > 1 || /^(E#|B#|Fb|Cb)/.test(transposed) ? Note.simplify(transposed) : transposed
 }

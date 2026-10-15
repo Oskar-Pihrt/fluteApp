@@ -1,13 +1,14 @@
 import type { InstrumentKey, KeyGroup } from '@/domain/keys'
 
 /**
- * The keys of a modern tenor saxophone (B♭, with high F♯ key).
+ * The keys of a modern alto or tenor saxophone (with high F♯ key). The two
+ * share their keywork exactly — only the size and the pitch differ.
  *
  * The six main finger keys and the left pinky G♯ reuse the flute's ids — they
  * play the same role — while everything else is saxophone-only.
  */
 
-export const TENOR_SAX_KEY_IDS = [
+export const SAX_KEY_IDS = [
   // Left thumb
   'OCTAVE',
   // Left palm keys and front F (left index, above the stack)
@@ -40,7 +41,7 @@ export const TENOR_SAX_KEY_IDS = [
   'LOW_C',
 ] as const
 
-export const TENOR_SAX_KEYS: readonly InstrumentKey[] = [
+export const SAX_KEYS: readonly InstrumentKey[] = [
   { id: 'OCTAVE', label: '8ve', name: 'Octave key (8ve)', hand: 'left', group: 'thumb', shape: 'lever' },
 
   { id: 'PALM_D', label: 'C1', name: 'Palm key D (C1)', hand: 'left', group: 'palm', shape: 'lever' },
@@ -85,4 +86,4 @@ export const TENOR_SAX_KEYS: readonly InstrumentKey[] = [
  * the left pinky between the three low keys. G♯ stands apart — it sits above
  * the table and is pressed on its own.
  */
-export const TENOR_SAX_EXCLUSIVE_GROUPS: readonly KeyGroup[] = ['rightPinky', 'leftPinkyTable']
+export const SAX_EXCLUSIVE_GROUPS: readonly KeyGroup[] = ['rightPinky', 'leftPinkyTable']

@@ -1,8 +1,10 @@
 import type { CodeGrammar, FingeringSpec } from '@/domain/fingering'
 
 /**
- * Fingering database for the B♭ tenor saxophone, in WRITTEN pitch — what the
- * player reads off the part. The instrument sounds a major ninth lower.
+ * Fingering database for the saxophone, in WRITTEN pitch — what the player
+ * reads off the part. Alto (E♭) and tenor (B♭) finger every written note the
+ * same way; they differ only in how far below written they sound, which is
+ * the instrument's `transposeSemitones`.
  *
  * Written from general knowledge of the standard saxophone fingerings, NOT
  * transcribed from a chart: check it against The Woodwind Fingering Guide
@@ -22,7 +24,7 @@ import type { CodeGrammar, FingeringSpec } from '@/domain/fingering'
  * The first two octaves share fingerings; the second adds the octave key, just
  * as the flute's first two octaves share theirs.
  */
-export const TENOR_SAX_GRAMMAR: CodeGrammar = {
+export const SAX_GRAMMAR: CodeGrammar = {
   thumb: { '8ve': 'OCTAVE', '-': null },
   leftStack: ['L1', 'L2', 'L3'],
   rightStack: ['R1', 'R2', 'R3'],
@@ -73,7 +75,7 @@ function bFlats(octaveKey: '8ve' | '-', octave: number): FingeringSpec[] {
   ]
 }
 
-export const TENOR_SAX_SPECS: FingeringSpec[] = [
+export const SAX_SPECS: FingeringSpec[] = [
   // ── Low register ────────────────────────────────────────────────────────────
   { note: 'A#3', code: '- 123 Bb | 123', kind: 'primary', comment: 'Lowest note on the horn.' },
   { note: 'B3', code: '- 123 B | 123', kind: 'primary' },

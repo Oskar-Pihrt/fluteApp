@@ -1,9 +1,12 @@
 import type { CodeGrammar, Fingering } from '@/domain/fingering'
 import type { InstrumentKey, KeyGroup, KeyId, Requirement } from '@/domain/keys'
 
-export type InstrumentId = 'flute' | 'tenorSax'
+export type InstrumentId = 'flute' | 'altoSax' | 'tenorSax'
 
-export const INSTRUMENT_IDS: readonly InstrumentId[] = ['flute', 'tenorSax']
+export const INSTRUMENT_IDS: readonly InstrumentId[] = ['flute', 'altoSax', 'tenorSax']
+
+/** Instruments that share keywork, fingerings and tone colour. */
+export type InstrumentFamily = 'flute' | 'sax'
 
 /** The optional hardware the player has — see `Requirement`. */
 export type InstrumentConfig = readonly Requirement[]
@@ -51,6 +54,7 @@ export interface Instrument {
   shortName: string
   /** "flute" — mid-sentence, as in "not on this flute". */
   noun: string
+  family: InstrumentFamily
   keys: readonly InstrumentKey[]
   exclusiveGroups: readonly KeyGroup[]
   grammar: CodeGrammar

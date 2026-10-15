@@ -12,6 +12,7 @@ import { type Instrument, INSTRUMENTS } from '@/instruments'
 /** Written range each instrument's data is meant to cover. */
 const RANGES: Record<Instrument['id'], [string, string]> = {
   flute: ['B3', 'C7'],
+  altoSax: ['A#3', 'F#6'],
   tenorSax: ['A#3', 'F#6'],
 }
 
@@ -99,9 +100,22 @@ describe('flute specifics', () => {
   })
 })
 
-describe('tenor sax specifics', () => {
+describe.each([INSTRUMENTS.altoSax, INSTRUMENTS.tenorSax])('$name specifics', (sax) => {
   it('needs the high F♯ key for F♯6 and nothing else', () => {
-    const needing = INSTRUMENTS.tenorSax.fingerings.filter((f) => f.requires.includes('highFSharp'))
+    const needing = sax.fingerings.filter((f) => f.requires.includes('highFSharp'))
     expect(needing.map((f) => f.note)).toEqual(['F#6'])
+  })
+})
+
+describe('saxophone family', () => {
+  it('fingers every written note the same on alto and tenor', () => {
+    const shape = (f: { note: string; kind: string; keys: readonly string[] }) =>
+      `${f.note}:${f.kind}:${[...f.keys].sort().join(',')}`
+    expect(INSTRUMENTS.altoSax.fingerings.map(shape)).toEqual(INSTRUMENTS.tenorSax.fingerings.map(shape))
+  })
+
+  it('keeps fingering ids unique across instruments', () => {
+    const ids = Object.values(INSTRUMENTS).flatMap((i) => i.fingerings.map((f) => f.id))
+    expect(new Set(ids).size).toBe(ids.length)
   })
 })

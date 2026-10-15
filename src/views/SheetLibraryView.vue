@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { createBlobUrl, revokeBlobUrl } from '@/data/images'
-import { INSTRUMENTS } from '@/instruments'
+import { INSTRUMENT_IDS, INSTRUMENTS } from '@/instruments'
 import { useSettingsStore } from '@/stores/settings'
 import { useSheetsStore } from '@/stores/sheets'
 
@@ -17,9 +17,16 @@ const visible = computed(() =>
   store.sheets.filter((sheet) => (sheet.instrument ?? 'flute') === settings.instrumentId),
 )
 const hiddenCount = computed(() => store.sheets.length - visible.value.length)
-const otherInstrument = computed(() =>
-  INSTRUMENTS[settings.instrumentId === 'flute' ? 'tenorSax' : 'flute'],
-)
+/** Nouns of the instruments the hidden sheets belong to, e.g. "flute and tenor sax". */
+const hiddenInstruments = computed(() => {
+  const ids = new Set(
+    store.sheets
+      .map((sheet) => sheet.instrument ?? 'flute')
+      .filter((id) => id !== settings.instrumentId),
+  )
+  const nouns = INSTRUMENT_IDS.filter((id) => ids.has(id)).map((id) => INSTRUMENTS[id].noun)
+  return nouns.length > 1 ? `${nouns.slice(0, -1).join(', ')} and ${nouns[nouns.length - 1]}` : nouns[0] ?? ''
+})
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const busy = ref(false)
@@ -139,7 +146,7 @@ function formatDate(timestamp: number): string {
 
     <p v-if="hiddenCount" class="text-center text-xs text-ink-400">
       {{ hiddenCount }} {{ hiddenCount === 1 ? 'sheet' : 'sheets' }} for the
-      {{ otherInstrument.noun }} hidden — switch instrument to see
+      {{ hiddenInstruments }} hidden — switch instrument to see
       {{ hiddenCount === 1 ? 'it' : 'them' }}.
     </p>
   </div>

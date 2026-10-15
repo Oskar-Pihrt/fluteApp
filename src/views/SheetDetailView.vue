@@ -15,7 +15,9 @@ import type { Box, KeySignature, OmrWarning } from '@/omr/types'
 import { createBlobUrl, revokeBlobUrl } from '@/data/images'
 import { playNote, playSequence } from '@/domain/audio'
 import { type Fingering, prettyCode } from '@/domain/fingering'
-import { canonicalNote, fingeringsForNote, noteLabel } from '@/domain/lookup'
+import { canonicalNote, fingeringsForNote, noteLabel, noteRange, transposeBetween } from '@/domain/lookup'
+import { INSTRUMENT_IDS, INSTRUMENTS, type InstrumentId } from '@/instruments'
+import { Note } from 'tonal'
 import { useSettingsStore } from '@/stores/settings'
 import { useSheetsStore } from '@/stores/sheets'
 
@@ -302,6 +304,44 @@ async function saveRename() {
   renaming.value = false
 }
 
+/** Instruments this sheet can be re-filed under. */
+const otherInstruments = computed(() =>
+  INSTRUMENT_IDS.filter((id) => id !== context.value.instrument.id).map((id) => INSTRUMENTS[id]),
+)
+
+/**
+ * Rewrite the piece for another instrument at the same sounding pitch. Warns
+ * first about notes that fall outside the target's range, since those will
+ * show no fingering until corrected.
+ */
+async function convertTo(id: InstrumentId) {
+  if (!sheet.value) return
+  if (dirty.value) {
+    window.alert('Save or discard your changes first.')
+    return
+  }
+  const target = INSTRUMENTS[id]
+  const playable = new Set(noteRange(settings.contextFor(id)).map((entry) => entry.midi))
+  const outside = draft.value.filter((entry) => {
+    const written = transposeBetween(entry.note, context.value.instrument, target)
+    const midi = written ? Note.midi(written) : null
+    return midi == null || !playable.has(midi)
+  }).length
+  const warning = outside
+    ? `\n\n${outside} ${outside === 1 ? 'note falls' : 'notes fall'} outside the ${target.noun}'s range.`
+    : ''
+  if (
+    !window.confirm(
+      `Rewrite "${sheet.value.title}" for the ${target.noun}? Notes are transposed so the piece sounds the same.${warning}`,
+    )
+  ) {
+    return
+  }
+  await store.convertInstrument(sheet.value.id, id)
+  settings.instrumentId = id
+  await load()
+}
+
 async function deleteSheet() {
   if (!sheet.value) return
   if (!window.confirm(`Delete "${sheet.value.title}" and its notes? This cannot be undone.`)) return
@@ -326,13 +366,31 @@ async function deleteSheet() {
           {{ sheet.composer || 'Tap to add a title or composer' }}
         </p>
       </button>
-      <button
-        type="button"
-        class="shrink-0 rounded-lg border border-ink-700 px-3 py-1.5 text-xs font-medium text-ink-400 transition-colors hover:border-red-500/60 hover:text-red-300"
-        @click="deleteSheet"
-      >
-        Delete
-      </button>
+      <div class="flex shrink-0 gap-2">
+        <label>
+          <span class="sr-only">Rewrite for another instrument</span>
+          <select
+            class="w-20 rounded-lg border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs font-medium text-ink-400 transition-colors hover:border-ink-500 focus:border-accent-400 focus:outline-none"
+            :value="''"
+            @change="
+              convertTo(($event.target as HTMLSelectElement).value as InstrumentId);
+              ($event.target as HTMLSelectElement).value = ''
+            "
+          >
+            <option value="" disabled>{{ context.instrument.shortName }}</option>
+            <option v-for="other in otherInstruments" :key="other.id" :value="other.id">
+              Rewrite for {{ other.noun }}
+            </option>
+          </select>
+        </label>
+        <button
+          type="button"
+          class="shrink-0 rounded-lg border border-ink-700 px-3 py-1.5 text-xs font-medium text-ink-400 transition-colors hover:border-red-500/60 hover:text-red-300"
+          @click="deleteSheet"
+        >
+          Delete
+        </button>
+      </div>
     </header>
 
     <form v-else class="space-y-2" @submit.prevent="saveRename">
