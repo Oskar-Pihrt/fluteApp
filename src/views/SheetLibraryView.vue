@@ -2,6 +2,8 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { createBlobUrl, revokeBlobUrl } from '@/data/images'
+import { transposeBy } from '@/domain/lookup'
+import { type MusicXmlPart, parseMusicXml, readMxl } from '@/domain/musicxml'
 import { INSTRUMENT_IDS, INSTRUMENTS } from '@/instruments'
 import { useSettingsStore } from '@/stores/settings'
 import { useSheetsStore } from '@/stores/sheets'
@@ -73,6 +75,84 @@ async function onPick(event: Event) {
   }
 }
 
+const xmlInput = ref<HTMLInputElement | null>(null)
+
+/** The part to import: the only one, one named for the instrument, or the player's pick. */
+function choosePart(parts: MusicXmlPart[]): MusicXmlPart | null {
+  if (parts.length === 1) return parts[0]
+  const words = [settings.instrument.noun, settings.instrument.shortName, settings.instrument.family === 'sax' ? 'sax' : 'flute']
+  const named = parts.filter((part) => words.some((word) => part.name.toLowerCase().includes(word.toLowerCase())))
+  if (named.length === 1) return named[0]
+  const list = parts.map((part, i) => `${i + 1}. ${part.name} (${part.notes.length} notes)`).join('\n')
+  const answer = window.prompt(`Which part do you play?\n\n${list}`, '1')
+  const index = Number(answer) - 1
+  return parts[index] ?? null
+}
+
+/** A plain card standing in for the scan, since an imported score has no picture. */
+async function placeholderImage(title: string, subtitle: string): Promise<Blob> {
+  const canvas = document.createElement('canvas')
+  canvas.width = 1200
+  canvas.height = 900
+  const context = canvas.getContext('2d')!
+  context.fillStyle = '#f4f1ea'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.strokeStyle = '#2a2a2a'
+  context.lineWidth = 3
+  for (let staff = 0; staff < 4; staff++) {
+    for (let line = 0; line < 5; line++) {
+      const y = 380 + staff * 120 + line * 14
+      context.beginPath()
+      context.moveTo(100, y)
+      context.lineTo(1100, y)
+      context.stroke()
+    }
+  }
+  context.fillStyle = '#1a1a1a'
+  context.font = '600 64px serif'
+  context.textAlign = 'center'
+  context.fillText(title.slice(0, 32), 600, 180, 1000)
+  context.font = '36px serif'
+  context.fillText(subtitle, 600, 260, 1000)
+  return new Promise((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Canvas failed'))), 'image/png'))
+}
+
+/**
+ * Import a MusicXML or compressed .mxl file: exact notes, no detection. The
+ * part is rewritten into the selected instrument's written pitch, so a flute
+ * part imported on the alto sax comes out ready to finger.
+ */
+async function onPickXml(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  busy.value = true
+  error.value = null
+  try {
+    const xml = /\.mxl$/i.test(file.name) ? await readMxl(await file.arrayBuffer()) : await file.text()
+    const score = parseMusicXml(xml)
+    if (!score.parts.length) throw new Error('That score has no notes in it.')
+    const part = choosePart(score.parts)
+    if (!part) return
+    // Part's written pitch → sounding → this instrument's written pitch.
+    const shift = part.transposeSemitones - settings.instrument.transposeSemitones
+    const notes = part.notes.map((note) => transposeBy(note, shift) ?? note)
+    const title = score.title || file.name.replace(/\.[^.]+$/, '')
+    const image = await placeholderImage(title, `${part.name} · imported from MusicXML`)
+    const id = await store.create(image, title, settings.instrumentId, score.composer)
+    await store.replaceNotes(
+      id,
+      notes.map((note, index) => ({ note, index, source: 'manual' as const })),
+    )
+    await router.push({ name: 'sheet', params: { id } })
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Could not import that file.'
+  } finally {
+    busy.value = false
+  }
+}
+
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString(undefined, {
     day: 'numeric',
@@ -88,6 +168,14 @@ function formatDate(timestamp: number): string {
       <div>
         <h1 class="text-xl">Sheet music</h1>
         <p class="mt-1 text-sm text-ink-400">Upload a photo or scan, then note down what to play.</p>
+        <button
+          type="button"
+          class="mt-1 text-xs font-medium text-accent-400 transition-colors hover:text-accent-300 disabled:opacity-50"
+          :disabled="busy"
+          @click="xmlInput?.click()"
+        >
+          Have it as MusicXML? Import the exact notes →
+        </button>
       </div>
       <button
         type="button"
@@ -103,6 +191,13 @@ function formatDate(timestamp: number): string {
         accept="image/*"
         class="hidden"
         @change="onPick"
+      />
+      <input
+        ref="xmlInput"
+        type="file"
+        accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml"
+        class="hidden"
+        @change="onPickXml"
       />
     </header>
 

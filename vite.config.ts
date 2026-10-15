@@ -39,6 +39,9 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  // The OMR eval and training folders hold thousands of generated pages; the
+  // dev server has no business watching them.
+  server: { watch: { ignored: ['**/omr-eval/**', '**/omr-train/**'] } },
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],

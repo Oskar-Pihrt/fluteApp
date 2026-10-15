@@ -167,8 +167,12 @@ export function noteFrequency(note: string, instrument: Instrument): number | nu
  * accidentals and E♯/B♭-style oddities simplified away.
  */
 export function transposeBetween(note: string, from: Instrument, to: Instrument): string | null {
+  return transposeBy(note, from.transposeSemitones - to.transposeSemitones)
+}
+
+/** A note moved by a number of semitones, spelled by interval as above. */
+export function transposeBy(note: string, semitones: number): string | null {
   if (Note.midi(note) == null) return null
-  const semitones = from.transposeSemitones - to.transposeSemitones
   if (!semitones) return note
   const transposed = Note.transpose(note, Interval.fromSemitones(semitones))
   const { alt } = Note.get(transposed)
