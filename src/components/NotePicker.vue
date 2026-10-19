@@ -12,8 +12,8 @@ import { useSettingsStore } from '@/stores/settings'
  * repeatedly. Only octaves that exist in the instrument's range are offered.
  */
 
-const props = defineProps<{ context?: InstrumentContext }>()
-const emit = defineEmits<{ add: [note: string] }>()
+const props = defineProps<{ context?: InstrumentContext; canBar?: boolean }>()
+const emit = defineEmits<{ add: [note: string]; bar: [] }>()
 
 const settings = useSettingsStore()
 const context = computed(() => props.context ?? settings.context)
@@ -87,5 +87,16 @@ const buttons = computed(() =>
         {{ button.label }}
       </button>
     </div>
+
+    <!-- A divider after the last note entered, to mark off bars or phrases. -->
+    <button
+      type="button"
+      class="flex w-full items-center justify-center gap-2 rounded-lg border border-ink-600 py-2 text-sm font-semibold text-ink-200 transition-colors enabled:hover:border-accent-400 disabled:opacity-25"
+      :disabled="!canBar"
+      @click="emit('bar')"
+    >
+      <span class="h-4 w-0.5 rounded-full bg-accent-300" aria-hidden="true" />
+      Divider
+    </button>
   </div>
 </template>

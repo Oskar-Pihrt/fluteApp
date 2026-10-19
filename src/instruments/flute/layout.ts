@@ -1,109 +1,116 @@
 import type { FluteKeyId } from '@/domain/keys'
-import type { ChartLayout, KeyDrawing } from '@/instruments/types'
+import type { Box, ChartLayout, KeyDrawing } from '@/instruments/types'
 
 /**
- * The flute's keywork drawn as a fingering chart — the keys alone, in their real
- * silhouettes, with no instrument body and no lettering. Filling a key in is
- * what "pressed" means.
+ * The flute's keywork drawn as a fingering chart, in the same visual language
+ * as the saxophone chart: six equal finger keys down the centre with a break
+ * between the hands, and the levers drawn as shaped, lettered keys around them
+ * rather than plain boxes.
  *
- * Laid out from the standard horizontal key chart, rotated upright so the
- * headjoint is at the top. Two consequences of that rotation are worth knowing,
- * because they are not what you would guess:
+ * Laid out upright with the headjoint at the top: the two thumb keys back to
+ * the left of the left hand, the G♯ lever out to the right beside it, the two
+ * trill keys tucked between the right-hand keys on the left, the E♭ lever to
+ * the right of the right hand, and the footjoint keys in a row at the bottom.
  *
- *  - The chart's second row becomes a LEFT column. It holds the two long thumb
- *    levers beside the left hand, the G♯ touchpiece, and the two small trill
- *    keys tucked between the right-hand keys.
- *  - The E♭ key and the footjoint keys run ACROSS the width, not down it. On the
- *    horizontal chart they are tall and narrow; rotated, they become wide and
- *    short, which is why the bottom of the diagram is a row of levers.
- *
- * Geometry is in viewBox units, transcribed proportionally from the chart.
+ * Geometry is in viewBox units.
  */
 
-/**
- * The six finger keys sit on the centre line, in two groups of three, and their
- * sizes graduate exactly as they do on the chart — the first is noticeably
- * smaller than the third.
- */
-function fingerKey(cy: number, r: number): KeyDrawing {
+const PAD = 5
+
+function pad(box: Box): Box {
+  return { x: box.x - PAD, y: box.y - PAD, width: box.width + PAD * 2, height: box.height + PAD * 2 }
+}
+
+/** One of the six finger keys. Ring keys, so they can be drawn vented. */
+function fingerKey(cy: number): KeyDrawing {
+  const cx = 120
+  const r = 24
   return {
-    parts: [{ s: 'circle', cx: 130, cy, r }],
-    ring: { cx: 130, cy, r },
-    hit: { x: 130 - r - 6, y: cy - r - 6, width: (r + 6) * 2, height: (r + 6) * 2 },
+    parts: [{ s: 'circle', cx, cy, r }],
+    ring: { cx, cy, r },
+    hit: pad({ x: cx - r, y: cy - r, width: r * 2, height: r * 2 }),
   }
 }
 
+/** A tilted oval, like the trill keys. */
+function oval(cx: number, cy: number, rx: number, ry: number, rotate: number, size?: number): KeyDrawing {
+  const reach = Math.max(rx, ry)
+  return {
+    parts: [{ s: 'ellipse', cx, cy, rx, ry, rotate }],
+    hit: pad({ x: cx - reach, y: cy - reach, width: reach * 2, height: reach * 2 }),
+    text: { x: cx, y: cy, size },
+  }
+}
+
+function shape(d: string, box: Box, text: { x: number; y: number; size?: number }): KeyDrawing {
+  return { parts: [{ s: 'path', d }], hit: pad(box), text }
+}
+
 const DRAWINGS: Record<FluteKeyId, KeyDrawing> = {
-  // Two long thumb levers down the left, beside the left hand. B♭ is the one
-  // reaching further towards the headjoint.
-  THUMB_BB: {
-    parts: [{ s: 'rect', x: 66, y: 60, w: 30, h: 45, rx: 14 }],
-    hit: { x: 66, y: 60, width: 32, height: 55 },
-  },
-  THUMB_B: {
-    parts: [{ s: 'rect', x: 40, y: 114, w: 45, h: 70, rx: 14 }],
-    hit: { x: 40, y: 114, width: 50, height: 80 },
-  },
+  // Thumb keys, back and to the left of the left hand: the small B♭ lever
+  // reaching towards the headjoint, and the B thumb's teardrop below it.
+  THUMB_BB: shape(
+    'M 52 34 L 72 39 Q 80 41 78 50 L 72 80 Q 70 88 62 86 L 48 82 Q 41 80 42 72 L 44 42 Q 45 33 52 34 Z',
+    { x: 41, y: 33, width: 39, height: 55 },
+    { x: 61, y: 61 },
+  ),
+  THUMB_B: shape(
+    'M 56 96 Q 80 100 80 128 Q 80 166 64 180 Q 56 186 48 180 Q 32 166 32 128 Q 32 100 56 96 Z',
+    { x: 32, y: 96, width: 48, height: 87 },
+    { x: 56, y: 138 },
+  ),
 
-  L1: fingerKey(42, 20),
-  L2: fingerKey(112, 26),
-  L3: fingerKey(188, 28),
+  L1: fingerKey(60),
+  L2: fingerKey(128),
+  L3: fingerKey(196),
 
-  // The G♯ key: a lobe out to the right, an arm back to its pad on the centre
-  // line, and the L-shaped touchpiece the left little finger presses.
-  L_GSHARP: {
-    parts: [
-      { s: 'rect', x: 170, y: 200, w: 40, h: 60, rx: 19 },
-    ],
-    hit: { x: 58, y: 214, width: 46, height: 60 },
-  },
+  // The G♯ lever for the left little finger, out to the right of L3.
+  L_GSHARP: shape(
+    'M 160 186 L 200 178 Q 210 177 210 187 L 210 206 Q 210 214 201 215 L 162 220 Q 154 221 154 212 L 154 194 Q 154 187 160 186 Z',
+    { x: 154, y: 177, width: 56, height: 44 },
+    { x: 182, y: 199 },
+  ),
 
-  R1: fingerKey(302, 27),
-  R2: fingerKey(370, 27),
-  R3: fingerKey(444, 25),
+  R1: fingerKey(292),
+  R2: fingerKey(360),
+  R3: fingerKey(428),
 
-  // Trill keys: small levers on the left, between the right-hand keys.
-  TRILL_D: {
-    parts: [{ s: 'rect', x: 58, y: 326, w: 38, h: 24, rx: 10 }],
-    hit: { x: 52, y: 320, width: 50, height: 36 },
-  },
-  TRILL_DSHARP: {
-    parts: [{ s: 'rect', x: 58, y: 396, w: 38, h: 24, rx: 10 }],
-    hit: { x: 52, y: 390, width: 50, height: 36 },
-  },
+  // Trill keys: small tilted levers on the left, between the right-hand keys.
+  TRILL_D: oval(72, 326, 11, 21, -20, 10),
+  TRILL_DSHARP: oval(72, 394, 11, 21, -20, 10),
 
-  // The E♭ key spans the width — tall and narrow on the horizontal chart, so
-  // wide and short once stood upright.
-  R_EFLAT: {
-    parts: [{ s: 'rect', x: 50, y: 482, w: 112, h: 40, rx: 16 }],
-    hit: { x: 44, y: 476, width: 124, height: 52 },
-  },
+  // The E♭ lever for the right little finger, out to the right of R3.
+  R_EFLAT: shape(
+    'M 160 420 L 200 412 Q 210 411 210 421 L 210 444 Q 210 452 201 453 L 162 458 Q 154 459 154 450 L 154 428 Q 154 421 160 420 Z',
+    { x: 154, y: 411, width: 56, height: 48 },
+    { x: 182, y: 435 },
+  ),
 
-  // Footjoint: a row of levers across the bottom, running large to small — the
-  // wide C♯ lever on the left, then C and B, with the little gizmo key on the
-  // right. Spacing comes from mirroring the row about x = 97, then shifting the
-  // whole row 30 units right; gaps stay even at 21 units.
-  FOOT_CSHARP: {
-    parts: [{ s: 'rect', x: 56, y: 534, w: 34, h: 62, rx: 13 }],
-    hit: { x: 52, y: 530, width: 42, height: 70 },
-  },
-  FOOT_C: {
-    parts: [{ s: 'rect', x: 111, y: 534, w: 15, h: 62, rx: 13 }],
-    hit: { x: 103, y: 530, width: 31, height: 70 },
-  },
-  FOOT_B: {
-    parts: [{ s: 'rect', x: 147, y: 534, w: 15, h: 62, rx: 13 }],
-    hit: { x: 139, y: 530, width: 31, height: 70 },
-  },
-  GIZMO: {
-    parts: [{ s: 'rect', x: 183, y: 546, w: 15, h: 50, rx: 13 }],
-    hit: { x: 175, y: 542, width: 31, height: 58 },
-  },
+  // Footjoint, across the bottom: the broad C♯ lever, the C and B rollers,
+  // and the little gizmo key.
+  FOOT_CSHARP: shape(
+    'M 52 486 L 88 482 Q 98 481 98 491 L 98 540 Q 98 550 88 550 L 52 548 Q 42 547 42 537 L 42 496 Q 42 487 52 486 Z',
+    { x: 42, y: 481, width: 56, height: 69 },
+    { x: 70, y: 516 },
+  ),
+  FOOT_C: shape(
+    'M 120 482 Q 130 482 130 494 L 130 538 Q 130 550 120 550 Q 110 550 110 538 L 110 494 Q 110 482 120 482 Z',
+    { x: 110, y: 482, width: 20, height: 68 },
+    { x: 120, y: 516 },
+  ),
+  FOOT_B: shape(
+    'M 152 482 Q 162 482 162 494 L 162 538 Q 162 550 152 550 Q 142 550 142 538 L 142 494 Q 142 482 152 482 Z',
+    { x: 142, y: 482, width: 20, height: 68 },
+    { x: 152, y: 516 },
+  ),
+  GIZMO: oval(188, 524, 10, 22, 12, 9),
 }
 
 export const FLUTE_CHART: ChartLayout = {
-  width: 210,
-  height: 612,
-  pixelWidth: { sm: 74, md: 104, lg: 172 },
+  width: 230,
+  height: 566,
+  pixelWidth: { sm: 84, md: 120, lg: 196 },
   drawings: DRAWINGS,
+  // The break between the left and right hands.
+  decorations: [{ s: 'arm', x1: 101, y1: 244, x2: 139, y2: 244 }],
 }

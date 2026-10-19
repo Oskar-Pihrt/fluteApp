@@ -40,6 +40,8 @@ interface DraftNote {
   /** Where on the page this note was found, normalised 0–1. Detected notes only. */
   bbox?: Box
   source?: 'manual' | 'detected'
+  /** A divider follows this note in the strip. */
+  barAfter?: boolean
   /** Recogniser confidence, 0–1. Transient — not persisted, only used for review. */
   confidence?: number
 }
@@ -89,13 +91,14 @@ const dirty = computed(() => JSON.stringify(stripTransient(draft.value)) !== sav
  * one gained a nested object it broke. Keep this plain.
  */
 function stripTransient(notes: DraftNote[]) {
-  return notes.map(({ note, chosenFingeringId, bbox, source }) => ({
+  return notes.map(({ note, chosenFingeringId, bbox, source, barAfter }) => ({
     note,
     chosenFingeringId,
     bbox: bbox
       ? { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height }
       : undefined,
     source,
+    barAfter: barAfter || undefined,
   }))
 }
 
@@ -111,11 +114,12 @@ async function load() {
   imageUrl.value = createBlobUrl(found.image)
 
   const notes = await store.notesFor(id)
-  draft.value = notes.map(({ note, chosenFingeringId, bbox, source }) => ({
+  draft.value = notes.map(({ note, chosenFingeringId, bbox, source, barAfter }) => ({
     note,
     chosenFingeringId,
     bbox,
     source,
+    barAfter,
   }))
   savedSnapshot.value = JSON.stringify(stripTransient(draft.value))
   detectionWarnings.value = []
@@ -238,6 +242,10 @@ const flaggedIndices = computed(() => {
 const hasDetected = computed(() => draft.value.some((entry) => entry.source === 'detected'))
 
 function removeAt(index: number) {
+  // A divider after the removed note stays where it was, after the note before.
+  if (draft.value[index].barAfter && index > 0) {
+    draft.value[index - 1] = { ...draft.value[index - 1], barAfter: true }
+  }
   draft.value.splice(index, 1)
   // Keep the staff positions aligned with the notes they belong to.
   detectedRelatives.value.splice(index, 1)
@@ -300,6 +308,12 @@ function clearAll() {
   selectedIndex.value = null
 }
 
+/** Add or remove the divider drawn after a note. */
+function toggleBar(index: number) {
+  const entry = draft.value[index]
+  draft.value[index] = { ...entry, barAfter: !entry.barAfter || undefined }
+}
+
 /** A copy of the selected note right after it, to fix a note detection missed. */
 function insertAfter(index: number) {
   const entry = draft.value[index]
@@ -313,7 +327,7 @@ function chooseFingering(index: number, fingering: Fingering) {
   // Storing the id only when it differs from the default keeps backups small
   // and lets the primary fingering follow future data corrections.
   draft.value[index] = {
-    note: draft.value[index].note,
+    ...draft.value[index],
     chosenFingeringId: fingering.id === options[0]?.id ? undefined : fingering.id,
   }
 }
@@ -693,33 +707,58 @@ async function deleteSheet() {
         </p>
       </div>
 
-      <!-- Sequence strip -->
-      <ol v-if="draft.length" class="flex flex-wrap gap-1.5">
-        <li v-for="(entry, index) in resolved" :key="index">
-          <button
-            type="button"
-            class="flex min-w-11 flex-col items-center rounded-lg border px-2 py-1.5 transition-colors"
-            :class="
-              selectedIndex === index
-                ? 'border-accent-400 bg-ink-800'
-                : 'border-ink-700 bg-ink-900 hover:border-ink-400'
-            "
-            @click="selectedIndex = selectedIndex === index ? null : index"
-          >
-            <NoteBadge :note="entry.note" size="sm" />
-            <span v-if="!entry.chosen" class="text-[10px] text-amber-300">?</span>
-            <!-- A dot marks a note the recogniser was unsure about, so attention
-                 goes where it is actually needed rather than note by note. -->
-            <span
-              v-else-if="flaggedIndices.includes(index)"
-              class="text-[10px] leading-none text-amber-300"
-              :aria-label="`${entry.note} needs checking`"
-              >•</span
-            >
-          </button>
-        </li>
-      </ol>
+      <!-- Sequence strip, with the selected note's fingering beside it so it
+           stays in view while tapping through the notes. -->
+      <div v-if="draft.length" class="flex items-start gap-3">
+        <ol class="flex min-w-0 flex-1 flex-wrap gap-1.5">
+          <template v-for="(entry, index) in resolved" :key="index">
+            <li>
+              <button
+                type="button"
+                class="flex min-w-11 flex-col items-center rounded-lg border px-2 py-1.5 transition-colors"
+                :class="
+                  selectedIndex === index
+                    ? 'border-accent-400 bg-ink-800'
+                    : 'border-ink-700 bg-ink-900 hover:border-ink-400'
+                "
+                @click="selectedIndex = selectedIndex === index ? null : index"
+              >
+                <NoteBadge :note="entry.note" size="sm" />
+                <span v-if="!entry.chosen" class="text-[10px] text-amber-300">?</span>
+                <!-- A dot marks a note the recogniser was unsure about, so attention
+                     goes where it is actually needed rather than note by note. -->
+                <span
+                  v-else-if="flaggedIndices.includes(index)"
+                  class="text-[10px] leading-none text-amber-300"
+                  :aria-label="`${entry.note} needs checking`"
+                  >•</span
+                >
+              </button>
+            </li>
+            <li
+              v-if="entry.barAfter"
+              class="w-0.5 self-stretch rounded-full bg-accent-300"
+              aria-label="Divider"
+            />
+          </template>
+        </ol>
 
+        <aside
+          v-if="selected"
+          class="sticky top-18 flex shrink-0 flex-col items-center gap-1.5 rounded-xl border border-ink-700 bg-ink-900 p-2 md:top-4"
+          :aria-label="`Fingering for ${selected.note}`"
+        >
+          <NoteBadge :note="selected.note" size="md" />
+          <KeyChart
+            v-if="selected.chosen"
+            :keys="selected.chosen.keys"
+            :vented="selected.chosen.vented"
+            :instrument="context.instrument"
+            size="sm"
+          />
+          <p v-else class="w-20 text-center text-[11px] text-amber-200">No fingering</p>
+        </aside>
+      </div>
     </section>
 
     <!-- Detail for the selected note. Deliberately above the keypad: while
@@ -728,7 +767,7 @@ async function deleteSheet() {
     <section
       v-if="selected"
       class="space-y-3 rounded-xl border border-ink-700 bg-ink-900 p-4"
-      :aria-label="`Fingering for ${selected.note}`"
+      :aria-label="`Details for ${selected.note}`"
     >
       <div class="flex items-center gap-3">
         <StaffPosition :note="selected.note" size="sm" class="shrink-0" />
@@ -754,6 +793,11 @@ async function deleteSheet() {
             { label: '8vb', title: 'Down an octave', run: () => shiftSemitone(selectedIndex!, -12) },
             { label: '8va', title: 'Up an octave', run: () => shiftSemitone(selectedIndex!, 12) },
             { label: '+ after', title: 'Insert a note after this one', run: () => insertAfter(selectedIndex!) },
+            {
+              label: selected.barAfter ? '− divider' : '| divider',
+              title: selected.barAfter ? 'Remove the divider after this note' : 'Add a divider after this note',
+              run: () => toggleBar(selectedIndex!),
+            },
           ]"
           :key="fix.label"
           type="button"
@@ -766,13 +810,6 @@ async function deleteSheet() {
       </div>
 
       <div v-if="selected.chosen" class="flex gap-4">
-        <KeyChart
-          :keys="selected.chosen.keys"
-          :vented="selected.chosen.vented"
-          :instrument="context.instrument"
-          size="md"
-          class="shrink-0"
-        />
         <div class="min-w-0 flex-1 space-y-2">
           <p class="font-mono text-xs break-words text-ink-200">
             {{ prettyCode(selected.chosen.code) }}
@@ -818,7 +855,13 @@ async function deleteSheet() {
       </p>
     </section>
 
-    <NotePicker v-if="editing" :context="context" @add="addNote" />
+    <NotePicker
+      v-if="editing"
+      :context="context"
+      :can-bar="draft.length > 0"
+      @add="addNote"
+      @bar="toggleBar(draft.length - 1)"
+    />
 
     <div v-if="dirty" class="sticky bottom-24 flex gap-2 md:bottom-4">
       <button
