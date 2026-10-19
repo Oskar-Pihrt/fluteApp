@@ -10,8 +10,10 @@ codebase, three targets: mobile web, desktop web, and a native Android app.
    match usually reports two notes — both are shown, not just one.
 2. **Note library.** Browse the whole range and see all documented ways to play
    each note: primary, alternate, and trill fingerings.
-3. **Sheet music.** Photograph or upload a piece, note down what to play, and
-   get the fingering for every note. Saved on your device for later.
+3. **Sheet music.** Photograph or upload a piece (or import MusicXML), detect or
+   note down what to play, and get the fingering for every note. A piece can be
+   rewritten for another instrument at the same sounding pitch. Saved on your
+   device for later.
 
 Everything works offline. Nothing is uploaded anywhere, and there are no
 accounts — which means backups are your responsibility, so **Setup → Export
@@ -120,70 +122,37 @@ Android toolchain at all, and is the fastest way to get it onto a phone.
 
 ## Reading notes off the page
 
-**Detect notes** on a sheet tries to read the pitches from the image and fills in
-the sequence for you to check. It runs entirely on your device — no upload, no
-service — and it is an assist, not a replacement: the notes land in the same
-unsaved draft you would have typed, so reviewing, correcting and saving work
-exactly as before.
+**Detect notes** on a sheet reads the pitches from the image and fills in the
+sequence for you to check. It runs entirely on your device — no upload, no
+service — and the result lands in the same unsaved draft you would have typed,
+so reviewing, correcting and saving work exactly as before. Tap a note for
+one-tap fixes (semitone, staff step, octave, insert). If you have the score as
+MusicXML or `.mxl`, **Import** reads it exactly instead.
 
-> **Status: experimental, and not yet reliable on real scores.**
->
-> The pipeline is thoroughly tested against synthetic pages — it reads those
-> exactly, including skew, brightness gradients, ledger lines, hollow noteheads,
-> key signatures and measure-scoped accidentals. It has *not* been made to work on
-> a real, densely engraved part yet; on a page of beamed sixteenths with ottava
-> marks and time-signature changes it currently produces little or nothing useful.
->
-> Manual note entry is complete and reliable, and remains the way to use the app.
-> Detection is a work in progress on top of it.
+It is a small neural network (about 0.3 MB, shipped with the app and cached for
+offline use) that finds noteheads, accidentals, clefs, barlines, ottava lines and
+ties, plus classical code for the staff geometry and the musical rules (key
+signature per staff, accidentals in force, 8va, ties). Pages the network cannot
+be loaded for fall back to the older heuristic recogniser.
 
-Two things make this tractable rather than a research project. The app stores
-**pitch order only**, with no durations, so recognition never has to interpret
-stems, beams, flags, dots, rests or tuplets — it reduces to *find the noteheads,
-work out each one's pitch*. And flute parts are monophonic, single-staff and in
-treble clef throughout, which is the easiest case in the field.
+Measured on pages with exact ground truth (`npm run omr:eval`, see
+[omr-eval/](omr-eval/)), as sequence accuracy of the note order:
 
-It lives in [src/omr/](src/omr/) and is plain TypeScript over typed arrays — no
-OpenCV, no ML model, nothing added to the download. Everything except the worker
-and the Vue composable is a pure function, so the whole recogniser is unit-tested
-in Node with no setup.
+| Input | Accuracy |
+| --- | --- |
+| Clean PDF / scan, LilyPond-engraved real parts | 99.3 % |
+| Three real MuseScore parts (letters and octaves only) | 99.1–99.5 % |
+| Simulated phone photos (perspective, curl, shadow, noise) | 87.7 % |
 
-```
-binarise   Sauvola local threshold, with a global fallback in flat regions
-deskew     skew angle from projection sharpness, then one rotation
-staves     line thickness and spacing, line detection, line removal
-glyphs     clef extent, barlines, accidentals, key signature
-noteheads  filled by erosion, hollow by enclosed-hole detection
-pitch      staff position → letter → key signature → measure accidentals
-```
+Be honest about the last row: photos are the weak spot, and the photo number is
+from *simulated* photos. Dense, tightly packed parts photographed at an angle
+can lose staves. Flat scans and screenshots are what it is built for; handwritten
+music is out of scope. Every failure falls back to the manual editor with a
+message rather than an empty screen.
 
-Three details worth knowing if you touch it:
-
-- **`spaceHeight` is the line pitch**, centre to centre — not the bare white gap.
-  Every size threshold downstream is a multiple of it, which is what makes the
-  detector resolution-independent.
-- **Pitch is derived, not stored.** Each note keeps its staff position, so
-  correcting a misread key signature re-spells the whole piece instantly with no
-  second pass over the image. That is what the key-signature buttons do.
-- **The clef has to be located before noteheads.** Its bowls are solid ellipses of
-  about the right size sitting on staff positions, so without excluding them they
-  read as notes.
-
-Turn on **Show detection stages** in dev mode to see the binarised, staff-removed
-and eroded bitmaps — which stage a page fails at is otherwise guesswork.
-
-Accuracy is best on flat scans and PDF screenshots, which is what it was built
-for. Photos are harder and handwritten music is out of scope. Every failure falls
-back to the manual editor with a message rather than an empty screen.
-
-**Where it stands.** Synthetic fixtures pass exactly, and a generated
-eleven-system page reads ~270 notes through the real import path. A genuine
-engraved flute part does not work yet. The gap between those two facts is the open
-problem: the fixtures evidently do not capture whatever real engraving does
-differently — likely beam density, ottava brackets and tightly spaced sixteenth
-runs. The next step is to diagnose against a real page using the stage bitmaps and
-the measurements the recogniser now reports on every run, rather than to keep
-guessing at fixtures.
+How it is built and trained is in [omr-train/](omr-train/README.md);
+`npm run omr:improve` runs one unattended round of fresh data, fine-tuning and
+evaluation, and only replaces the shipped model if it scores better.
 
 ## Not built yet
 
