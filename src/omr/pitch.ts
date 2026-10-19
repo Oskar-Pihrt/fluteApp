@@ -33,6 +33,11 @@ export interface DeriveOptions {
   accidentals: AccidentalGlyph[]
   barlines: Barline[]
   key: KeySignature
+  /**
+   * The key printed at the start of each staff, by staff index, when known.
+   * Overrides `key` for that staff — a piece can change key between systems.
+   */
+  staffKeys?: KeySignature[]
   scale: StaffScale
   /** Per-staff x where music begins, so key-signature glyphs aren't reused as note accidentals. */
   contentStartX: number[]
@@ -114,8 +119,9 @@ function spell(letter: string, octave: number, accidental: PrintedAccidental): s
  * grouped by staff, ordered by x.
  */
 export function derivePitches(options: DeriveOptions): RecognisedNote[] {
-  const { noteheads, accidentals, barlines, key, scale, contentStartX } = options
-  const keyAlterations = lettersAlteredBy(key)
+  const { noteheads, accidentals, barlines, key, scale, contentStartX, staffKeys } = options
+  const globalAlterations = lettersAlteredBy(key)
+  const alterationsByStaff = staffKeys?.map((k) => lettersAlteredBy(k))
 
   const staffCount = Math.max(1, ...noteheads.map((n) => n.staffIndex + 1))
   const measureAt = buildMeasureNumbering(barlines, staffCount)
@@ -157,6 +163,7 @@ export function derivePitches(options: DeriveOptions): RecognisedNote[] {
       if (inForce) {
         accidental = inForce
       } else {
+        const keyAlterations = alterationsByStaff?.[notehead.staffIndex] ?? globalAlterations
         accidental = keyAlterations.get(letter) ?? ''
       }
     }

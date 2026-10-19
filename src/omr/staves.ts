@@ -144,6 +144,21 @@ export function groupIntoStaves(lineYs: number[], scale: StaffScale, binary: Bit
     const consistent = gaps.every((gap) => gap >= minGap && gap <= maxGap)
 
     if (consistent) {
+      // A beam or a row of ledger lines just above or below a staff can pass
+      // for a sixth line at the right spacing. Of two overlapping candidates,
+      // keep the one whose lines are inked across more of the page — real
+      // staff lines run the full width, beams and ledger lines do not.
+      const next = sorted.slice(i + 1, i + 6)
+      if (next.length === 5) {
+        const nextGaps = [1, 2, 3, 4].map((n) => next[n] - next[n - 1])
+        if (nextGaps.every((gap) => gap >= minGap && gap <= maxGap)) {
+          const weakest = (ys: number[]) => Math.min(...ys.map((y) => lineCoverage(binary, y, scale.lineHeight)))
+          if (weakest(next) > weakest(group)) {
+            i += 1
+            continue
+          }
+        }
+      }
       const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length
       const extent = staffExtent(binary, group, scale.lineHeight)
       staves.push({
@@ -160,6 +175,23 @@ export function groupIntoStaves(lineYs: number[], scale: StaffScale, binary: Bit
     }
   }
   return staves
+}
+
+/** Fraction of the page's columns inked within a line's thickness of row `y`. */
+function lineCoverage(binary: Bitmap, y: number, lineHeight: number): number {
+  const tolerance = Math.max(1, Math.round(lineHeight))
+  const yFrom = Math.max(0, Math.round(y - tolerance))
+  const yTo = Math.min(binary.height - 1, Math.round(y + tolerance))
+  let inked = 0
+  for (let x = 0; x < binary.width; x++) {
+    for (let yy = yFrom; yy <= yTo; yy++) {
+      if (binary.data[yy * binary.width + x] < INK_THRESHOLD) {
+        inked++
+        break
+      }
+    }
+  }
+  return inked / binary.width
 }
 
 /**

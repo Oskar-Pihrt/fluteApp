@@ -63,6 +63,8 @@ interface PageScore {
   matchedHeads: number
   detectedHeads: number
   pitchCorrect: number
+  /** Pitch errors among matched heads, by kind: semitone, step, octave, other. */
+  pitchErrors: Record<string, number>
   ms: number
   warnings: string[]
 }
@@ -98,6 +100,7 @@ for (const page of pages) {
   const claimed = new Set<number>()
   let matched = 0
   let pitchCorrect = 0
+  const pitchErrors: Record<string, number> = {}
   for (const note of result.notes) {
     const cx = (note.bbox.x + note.bbox.width / 2) * gray.width
     const cy = (note.bbox.y + note.bbox.height / 2) * gray.height
@@ -114,7 +117,14 @@ for (const page of pages) {
     if (best >= 0) {
       claimed.add(best)
       matched++
-      if (Note.midi(note.note) === truthSeq[best].midi) pitchCorrect++
+      const got = Note.midi(note.note) ?? 0
+      const want = truthSeq[best].midi
+      if (got === want) pitchCorrect++
+      else {
+        const diff = got - want
+        const kind = Math.abs(diff) % 12 === 0 ? 'octave' : Math.abs(diff) <= 2 ? `semitone${diff > 0 ? '+' : '-'}${Math.abs(diff)}` : 'other'
+        pitchErrors[kind] = (pitchErrors[kind] ?? 0) + 1
+      }
     }
   }
 
@@ -130,6 +140,7 @@ for (const page of pages) {
     matchedHeads: matched,
     detectedHeads: result.notes.length,
     pitchCorrect,
+    pitchErrors,
     ms,
     warnings: result.warnings.map((w) => w.code),
   }
@@ -137,7 +148,7 @@ for (const page of pages) {
   if (!quiet) {
     const acc = Math.max(0, 1 - score.edits / Math.max(1, score.truthLength))
     console.log(
-      `${(acc * 100).toFixed(1).padStart(5)}%  ${String(score.detectedLength).padStart(4)}/${String(score.truthLength).padEnd(4)} ${Math.round(ms).toString().padStart(5)}ms  ${score.page}`,
+      `${(acc * 100).toFixed(1).padStart(5)}%  ${String(score.detectedLength).padStart(4)}/${String(score.truthLength).padEnd(4)} ${Math.round(ms).toString().padStart(5)}ms  ${score.page}  ${Object.entries(pitchErrors).map(([k, v]) => `${k}:${v}`).join(' ')}`,
     )
   }
 }

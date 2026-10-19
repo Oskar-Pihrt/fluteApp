@@ -1,6 +1,7 @@
 import { assemble, type AssembleOptions } from './assemble'
 import { binarise, LOW_CONTRAST_INK_FRACTION } from './binarise'
 import { rotate } from './bitmap'
+import { buildDewarp, findTracks } from './dewarp'
 import { estimateSkew } from './deskew'
 import { detectSymbols, resampleGray } from './detector'
 import type { Net } from './net'
@@ -107,14 +108,23 @@ export function recogniseWithNet(gray: Bitmap, net: Net, options: NetRecogniseOp
   }
   const target = net.manifest.inputStaffSpace
   const factor = target / measured.spaceHeight
-  const page = Math.abs(factor - 1) < 0.02 ? straight : resampleGray(straight, factor)
-  const pageBinary = binarise(page).bitmap
-  const scale: StaffScale = estimateScale(pageBinary) ?? {
+  const resampled = Math.abs(factor - 1) < 0.02 ? straight : resampleGray(straight, factor)
+  const resampledBinary = binarise(resampled).bitmap
+  const scale: StaffScale = estimateScale(resampledBinary) ?? {
     lineHeight: Math.max(1, Math.round(measured.lineHeight * factor)),
     spaceHeight: target,
   }
   diagnostics.resample = 1 / factor
   timings.scale = clock() - mark
+
+  // A photo's staves are tilted and curled by amounts that differ across the
+  // page. Track each staff's lines locally and level them, so everything after
+  // this sees the flat page it was built for. A flat scan skips the resampling.
+  mark = clock()
+  const dewarp = buildDewarp(findTracks(resampledBinary, scale), resampled.width, resampled.height, scale.spaceHeight)
+  const page = dewarp ? dewarp.apply(resampled) : resampled
+  const pageBinary = dewarp ? binarise(page).bitmap : resampledBinary
+  timings.dewarp = clock() - mark
 
   // ── Staves ───────────────────────────────────────────────────────────────
   report('staves', 0)
@@ -144,10 +154,15 @@ export function recogniseWithNet(gray: Bitmap, net: Net, options: NetRecogniseOp
   mark = clock()
   const assembled = assemble(detections, staves, scale, options)
   diagnostics.noteheadCount = assembled.noteheadCount
-  const notes = assembled.notes.map((note) => ({
-    ...note,
-    bbox: normaliseBox(note.bbox, page, skewDeg, 1 / factor, gray),
-  }))
+  const notes = assembled.notes.map((note) => {
+    // Back through the straightening first: the box is on the levelled page.
+    let bbox = note.bbox
+    if (dewarp) {
+      const centre = dewarp.toSource(bbox.x + bbox.width / 2, bbox.y + bbox.height / 2)
+      bbox = { ...bbox, y: centre.y - bbox.height / 2 }
+    }
+    return { ...note, bbox: normaliseBox(bbox, page, skewDeg, 1 / factor, gray) }
+  })
   timings.pitch = clock() - mark
 
   if (!notes.length) {

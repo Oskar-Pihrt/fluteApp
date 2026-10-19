@@ -50,6 +50,16 @@ describe('assemble', () => {
     expect(notes.map((n) => n.note)).toEqual(['F#4', 'C#5', 'F#4', 'C#5'])
   })
 
+  it('follows a key change between systems', () => {
+    const [a, b] = two
+    const { notes } = assemble(
+      [clef(a), d('sharp', 60, yOf(a, 8)), head(a, 120, 1), clef(b), d('flat', 60, yOf(b, 4)), head(b, 120, 1), head(b, 160, 4)],
+      two,
+      scale,
+    )
+    expect(notes.map((n) => n.note)).toEqual(['F#4', 'F4', 'Bb4'])
+  })
+
   it('does not mistake the first note’s own accidental for the key', () => {
     const st = one[0]
     const { notes, key } = assemble([clef(st), d('flat', 90, yOf(st, 4)), head(st, 100, 4), head(st, 140, 4)], one, scale)
@@ -91,6 +101,35 @@ describe('assemble', () => {
     )
     expect(notes.map((n) => n.note)).toEqual(['F5', 'F6', 'F6', 'F5'])
     expect(notes.map((n) => n.octaveShift ?? 0)).toEqual([0, 1, 1, 0])
+  })
+
+  it('carries an 8va whose end sits on the right edge into the next system', () => {
+    const [a, b] = two
+    const { notes } = assemble(
+      [
+        clef(a),
+        clef(b),
+        d('ottava_start', 100, yOf(a, 14)),
+        head(a, 120, 8), // under the line
+        d('ottava_end', a.x1 - 2, yOf(a, 14)), // the line just stops at the system's edge
+        head(b, 100, 8), // so it is still going on the next one
+        d('ottava_end', 300, yOf(b, 14)),
+        head(b, 400, 8), // and over by here
+      ],
+      two,
+      scale,
+    )
+    expect(notes.map((n) => n.note)).toEqual(['F6', 'F6', 'F5'])
+  })
+
+  it('does not carry an edge-ended 8va into a staff with no end mark of its own', () => {
+    const [a, b] = two
+    const { notes } = assemble(
+      [clef(a), clef(b), d('ottava_start', 100, yOf(a, 14)), head(a, 120, 8), d('ottava_end', a.x1 - 2, yOf(a, 14)), head(b, 100, 8)],
+      two,
+      scale,
+    )
+    expect(notes.map((n) => n.note)).toEqual(['F6', 'F5'])
   })
 
   it('merges a tied continuation into the note it continues', () => {

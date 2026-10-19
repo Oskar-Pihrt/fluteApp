@@ -32,8 +32,8 @@ const THRESHOLDS: Record<string, number> = {
 }
 
 /** Tile geometry in resampled pixels: a core, plus context on every side. */
-const TILE_CORE = 320
-const TILE_MARGIN = 64
+const TILE_CORE = 640
+const TILE_MARGIN = 48
 
 /**
  * Resample a grayscale bitmap by an arbitrary factor: box-averaged when

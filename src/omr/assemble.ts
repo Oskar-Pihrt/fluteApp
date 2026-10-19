@@ -126,7 +126,10 @@ export function assemble(detections: Detection[], staves: Staff[], scale: StaffS
     .filter((b) => b.staffIndex >= 0)
     .sort((a, b) => a.staffIndex - b.staffIndex || a.x - b.x)
 
-  // ── Key signature, read per staff and reconciled ─────────────────────────
+  // ── Key signature, read per staff ────────────────────────────────────────
+  // Every system reprints its key, so each staff is read on its own: a piece
+  // that changes key between systems comes out right. The majority is only
+  // what gets reported (and offered for correction) as "the" key.
   const contentStartX: number[] = []
   const keys: KeySignature[] = []
   for (const staff of staves) {
@@ -145,7 +148,7 @@ export function assemble(detections: Detection[], staves: Staff[], scale: StaffS
 
   // ── Pitches ──────────────────────────────────────────────────────────────
   const shifted = applyOttavas(monophonic, detections, staves, S)
-  const notes = derivePitches({ noteheads: shifted, accidentals, barlines, key, scale, contentStartX })
+  const notes = derivePitches({ noteheads: shifted, accidentals, barlines, key, staffKeys: keys, scale, contentStartX })
   shifted.forEach((head, i) => {
     notes[i].grace = (head as { grace?: boolean }).grace
     notes[i].octaveShift = (head as { octaveShift?: number }).octaveShift
@@ -168,7 +171,7 @@ export function assemble(detections: Detection[], staves: Staff[], scale: StaffS
   return { notes: out, key, barlines, noteheadCount: kept.length, chordCount }
 }
 
-/** The key most staves agree on; a single misread staff should not win. */
+/** The key most staves agree on — what the review UI shows as the piece's key. */
 function majorityKey(keys: KeySignature[]): KeySignature {
   const counts = new Map<string, { key: KeySignature; n: number }>()
   for (const key of keys) {
@@ -185,37 +188,46 @@ function majorityKey(keys: KeySignature[]): KeySignature {
 /**
  * Raise (or lower) every notehead under an ottava line by an octave.
  *
- * Starts and ends are matched left to right on each staff; a line still open
- * at the end of a staff carries on to the next one, as engraving does at a
- * system break. Below-the-staff lines are 8vb.
+ * Starts and ends are matched left to right on each staff. A line carries over
+ * a system break in two ways: it is still open when the staff runs out, or its
+ * end mark sits on the staff's right edge — the dashed line simply stops where
+ * the system does and picks up again at the left of the next one. Either way
+ * it only carries on if the next staff shows some end mark of its own, since
+ * a continuing line always has to end somewhere and a continuation with no end
+ * in sight is far likelier a misread than a piece spent an octave up.
+ * Lines below the staff are 8vb.
  */
 function applyOttavas<T extends Notehead>(heads: T[], detections: Detection[], staves: Staff[], S: number): (T & { octaveShift?: number })[] {
   const spans: { staffIndex: number; x0: number; x1: number; shift: number }[] = []
-  let open: { shift: number } | null = null
+  let carry: number | null = null
   for (const staff of staves) {
     const marks = detections
       .filter((d) => (d.cls === 'ottava_start' || d.cls === 'ottava_end') && staffForY(staves, d.y)?.index === staff.index)
       .sort((a, b) => a.x - b.x)
-    let x0 = open ? staff.x0 : null
-    let shift: number = open?.shift ?? 0
+    const hasEnd = marks.some((m) => m.cls === 'ottava_end')
+    let shift: number = carry != null && hasEnd ? carry : 0
+    let x0: number | null = shift ? staff.x0 : null
+    carry = null
     for (const mark of marks) {
       if (mark.cls === 'ottava_start') {
-        x0 = mark.x - S * 0.6
-        shift = mark.y > staff.lines[4] ? -7 : 7
+        // A second start inside an open line is the same line seen twice.
+        if (x0 == null) {
+          x0 = mark.x - S * 0.6
+          shift = mark.y > staff.lines[4] ? -7 : 7
+        }
       } else if (x0 != null) {
         spans.push({ staffIndex: staff.index, x0, x1: mark.x + S * 0.3, shift })
+        if (mark.x > staff.x1 - S * 2.2) carry = shift
         x0 = null
       }
     }
     if (x0 != null) {
       spans.push({ staffIndex: staff.index, x0, x1: staff.x1 + 1, shift })
-      open = { shift }
-    } else {
-      open = null
+      carry = shift
     }
   }
   return heads.map((head) => {
-    const span = spans.find((s) => s.staffIndex === head.staffIndex && head.x >= s.x0 && head.x <= s.x1)
+    const span = spans.find((sp) => sp.staffIndex === head.staffIndex && head.x >= sp.x0 && head.x <= sp.x1)
     return span ? { ...head, relative: head.relative + span.shift, octaveShift: span.shift > 0 ? 1 : -1 } : head
   })
 }
