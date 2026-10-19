@@ -30,6 +30,15 @@ const selected = ref<KeyId[]>([])
 const unavailable = computed(() => unavailableKeys(settings.context))
 
 const matches = computed(() => notesForKeys(selected.value, settings.context))
+
+/** Where the echoed match sits, as a percentage of the chart's box. */
+const matchPosition = computed(() => {
+  const chart = settings.instrument.chart
+  return {
+    left: `${(chart.matchAnchor.x / chart.width) * 100}%`,
+    top: `${(chart.matchAnchor.y / chart.height) * 100}%`,
+  }
+})
 const suggestions = computed(() =>
   matches.value.length || !selected.value.length
     ? []
@@ -70,14 +79,16 @@ function reset() {
 
         <!-- On a phone the answer is otherwise below the tall diagram, out of
              sight while tapping keys. Exact matches are echoed in the empty
-             margin beside it; the full cards still follow underneath. -->
+             space the instrument's chart leaves free (`matchAnchor`); the full
+             cards still follow underneath. -->
         <ul
           v-if="matches.length"
-          class="absolute top-1/2 right-full mr-2 flex -translate-y-1/2 flex-col items-end gap-2 sm:hidden"
+          class="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 sm:hidden"
+          :style="matchPosition"
           aria-hidden="true"
         >
           <li v-for="match in matches" :key="match.id" class="whitespace-nowrap">
-            <NoteBadge :note="match.note" :size="matches.length === 1 ? 'lg' : 'md'" />
+            <NoteBadge :note="match.note" size="md" />
           </li>
         </ul>
       </div>

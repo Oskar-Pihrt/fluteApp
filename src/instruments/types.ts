@@ -44,6 +44,11 @@ export interface ChartLayout {
   drawings: Partial<Record<KeyId, KeyDrawing>>
   /** Decorative strokes that aren't keys (e.g. the divider between hands). */
   decorations?: Part[]
+  /**
+   * Centre of the empty spot, in viewBox units, where the finger finder echoes
+   * the matched note on a phone. May lie outside the chart, in the margin.
+   */
+  matchAnchor: { x: number; y: number }
 }
 
 export interface Instrument {

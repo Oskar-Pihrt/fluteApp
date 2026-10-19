@@ -117,4 +117,6 @@ export const SAX_CHART: ChartLayout = {
   drawings: DRAWINGS,
   // The break between the left and right hands.
   decorations: [{ s: 'arm', x1: 86, y1: 268, x2: 124, y2: 268 }],
+  // The open space right of the lower stack, below the left pinky table.
+  matchAnchor: { x: 226, y: 410 },
 }

@@ -113,4 +113,6 @@ export const FLUTE_CHART: ChartLayout = {
   drawings: DRAWINGS,
   // The break between the left and right hands.
   decorations: [{ s: 'arm', x1: 101, y1: 244, x2: 139, y2: 244 }],
+  // In the margin left of the chart, level with the break between the hands.
+  matchAnchor: { x: -30, y: 283 },
 }
