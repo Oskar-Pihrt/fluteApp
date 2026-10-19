@@ -150,12 +150,13 @@ export const useSheetsStore = defineStore('sheets', () => {
             // ids and sheet ids out of the file. That means every new SheetNote
             // field has to be added here too — omitting one loses it silently on
             // backup and restore, with nothing to signal the loss.
-            notes: notes.map(({ note, index, chosenFingeringId, bbox, source }) => ({
+            notes: notes.map(({ note, index, chosenFingeringId, bbox, source, barAfter }) => ({
               note,
               index,
               chosenFingeringId,
               bbox,
               source,
+              barAfter,
             })),
           }
         }),

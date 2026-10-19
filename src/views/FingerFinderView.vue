@@ -65,8 +65,21 @@ function reset() {
          beside it narrows the results column too much. Side by side from `sm`
          up, where there's width to spare. -->
     <div class="flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:gap-9">
-      <div class="shrink-0">
+      <div class="relative shrink-0">
         <KeyChart v-model:keys="selected" interactive size="lg" :unavailable="unavailable" />
+
+        <!-- On a phone the answer is otherwise below the tall diagram, out of
+             sight while tapping keys. Exact matches are echoed in the empty
+             margin beside it; the full cards still follow underneath. -->
+        <ul
+          v-if="matches.length"
+          class="absolute top-1/2 right-full mr-2 flex -translate-y-1/2 flex-col items-end gap-2 sm:hidden"
+          aria-hidden="true"
+        >
+          <li v-for="match in matches" :key="match.id" class="whitespace-nowrap">
+            <NoteBadge :note="match.note" :size="matches.length === 1 ? 'lg' : 'md'" />
+          </li>
+        </ul>
       </div>
 
       <div class="w-full min-w-0 flex-1 space-y-4">

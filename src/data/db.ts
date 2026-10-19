@@ -55,6 +55,8 @@ export interface SheetNote {
   bbox?: { x: number; y: number; width: number; height: number }
   /** How this note got here. Absent is treated as 'manual'. */
   source?: 'manual' | 'detected'
+  /** A divider is drawn after this note, to split the piece into phrases or bars. */
+  barAfter?: boolean
 }
 
 class FluteDatabase extends Dexie {
