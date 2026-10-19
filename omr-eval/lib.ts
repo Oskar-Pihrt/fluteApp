@@ -54,6 +54,8 @@ export interface TruthNotehead {
 }
 
 export interface PageTruth {
+  /** Pitches are letter and octave only (accidentals unknown) — compare those. */
+  naturalOnly?: boolean
   dpi?: number
   width: number
   height: number

@@ -7,7 +7,7 @@ import { detectSymbols, resampleGray } from './detector'
 import type { Net } from './net'
 import { normaliseBox, noteWarnings, type RecogniseOptions, type RecogniseOutput } from './recognise'
 import { detectStaffLines, estimateScale, groupIntoStaves } from './staves'
-import type { Bitmap, OmrProgress, OmrResult, OmrWarning, StaffScale } from './types'
+import type { Bitmap, OmrProgress, OmrResult, OmrWarning, Staff, StaffScale } from './types'
 
 /**
  * The recogniser, with symbols found by the trained network.
@@ -19,7 +19,10 @@ import type { Bitmap, OmrProgress, OmrResult, OmrWarning, StaffScale } from './t
  * threshold the same in pixels on every page.
  */
 
-export interface NetRecogniseOptions extends RecogniseOptions, AssembleOptions {}
+export interface NetRecogniseOptions extends RecogniseOptions, AssembleOptions {
+  /** Level warped staves first. Default true; off is for comparing. */
+  dewarp?: boolean
+}
 
 const STAGE_FRACTIONS: Record<OmrProgress['stage'], number> = {
   binarise: 0.1,
@@ -121,7 +124,8 @@ export function recogniseWithNet(gray: Bitmap, net: Net, options: NetRecogniseOp
   // page. Track each staff's lines locally and level them, so everything after
   // this sees the flat page it was built for. A flat scan skips the resampling.
   mark = clock()
-  const dewarp = buildDewarp(findTracks(resampledBinary, scale), resampled.width, resampled.height, scale.spaceHeight)
+  const dewarp =
+    options.dewarp === false ? null : buildDewarp(findTracks(resampledBinary, scale), resampled.width, resampled.height, scale.spaceHeight)
   const page = dewarp ? dewarp.apply(resampled) : resampled
   const pageBinary = dewarp ? binarise(page).bitmap : resampledBinary
   timings.dewarp = clock() - mark
@@ -129,9 +133,20 @@ export function recogniseWithNet(gray: Bitmap, net: Net, options: NetRecogniseOp
   // ── Staves ───────────────────────────────────────────────────────────────
   report('staves', 0)
   mark = clock()
-  const lineYs = detectStaffLines(pageBinary, scale)
+  // The threshold that picks out staff lines is a trade-off: high loses a faint
+  // line (and with it a whole staff), low lets noise in. Try each and keep the
+  // reading that yields the most complete staves, preferring the stricter one.
+  let lineYs: number[] = []
+  let staves: Staff[] = []
+  for (const fraction of [0.45, 0.3, 0.2]) {
+    const ys = detectStaffLines(pageBinary, scale, [fraction])
+    const found = groupIntoStaves(ys, scale, pageBinary)
+    if (found.length > staves.length) {
+      lineYs = ys
+      staves = found
+    }
+  }
   diagnostics.staffLineCount = lineYs.length
-  const staves = groupIntoStaves(lineYs, scale, pageBinary)
   timings.staves = clock() - mark
   if (!staves.length) {
     warnings.push({

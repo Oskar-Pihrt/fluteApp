@@ -83,14 +83,14 @@ function modeOf(histogram: Int32Array, from: number, to: number): number | null 
  * profile's peak, with one retry at a lower fraction — a faint or partly cropped
  * staff is common enough to be worth handling rather than failing on.
  */
-export function detectStaffLines(binary: Bitmap, scale: StaffScale): number[] {
+export function detectStaffLines(binary: Bitmap, scale: StaffScale, fractions: number[] = [0.45, 0.3, 0.2]): number[] {
   const profile = rowInkProfile(binary)
   let peak = 0
   for (const v of profile) if (v > peak) peak = v
   if (peak === 0) return []
 
   const maxThickness = scale.lineHeight * 3 + 2
-  for (const fraction of [0.45, 0.3, 0.2]) {
+  for (const fraction of fractions) {
     const lines = bandsAboveThreshold(profile, peak * fraction, maxThickness)
     if (lines.length >= 5) return lines
   }

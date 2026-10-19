@@ -87,12 +87,19 @@ for (const page of pages) {
   const truth = JSON.parse(readFileSync(page.replace(/\.pgm$/, '.json'), 'utf8')) as PageTruth
   const gray = readPgm(page)
   const started = performance.now()
-  const { result } = net ? recogniseWithNet(gray, net) : recognise(gray)
+  // Printed order, ties kept: the truth's `tied` flags let `played` merge them below.
+  const { result } = net ? recogniseWithNet(gray, net, { mergeTies: false }) : recognise(gray)
   const ms = performance.now() - started
 
   const truthSeq = truthSequence(truth)
   const played = truthSequence(truth, { played: true })
-  const detected = result.notes.map((n) => Note.midi(n.note) ?? -1)
+  // Pages whose truth has no accidentals are compared on letter and octave.
+  const midiOf = (note: string) => {
+    const n = Note.get(note)
+    return (truth.naturalOnly ? Note.midi(`${n.letter}${n.oct}`) : Note.midi(note)) ?? -1
+  }
+  const detected = result.notes.map((n) => midiOf(n.note))
+  const detectedPlayed = result.notes.filter((n) => !n.tied).map((n) => midiOf(n.note))
 
   // Location matching: each detection claims the nearest unclaimed truth head
   // within 0.6 staff spaces.
@@ -117,7 +124,7 @@ for (const page of pages) {
     if (best >= 0) {
       claimed.add(best)
       matched++
-      const got = Note.midi(note.note) ?? 0
+      const got = midiOf(note.note)
       const want = truthSeq[best].midi
       if (got === want) pitchCorrect++
       else {
@@ -134,7 +141,7 @@ for (const page of pages) {
     truthLength: truthSeq.length,
     detectedLength: detected.length,
     edits: levenshtein(detected, truthSeq.map((n) => n.midi)),
-    playedEdits: levenshtein(detected, played.map((n) => n.midi)),
+    playedEdits: levenshtein(detectedPlayed, played.map((n) => n.midi)),
     playedLength: played.length,
     truthHeads: truthSeq.length,
     matchedHeads: matched,

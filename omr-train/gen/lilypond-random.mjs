@@ -153,7 +153,7 @@ function piece(seed) {
 \\score {
   \\new Staff \\with { ${r.chance(0.3) ? 'instrumentName = "Fl."' : ''} } {
     \\clef treble \\key ${MAJOR_KEYS[fifths]} \\major \\time ${meter[0]}/${meter[1]}
-    ${r.chance(0.6) ? `\\tempo "${r.pick(['Allegro', 'Andante', 'Moderato', 'Adagio', 'Presto'])}"` : ''}
+    ${r.chance(0.6) ? (r.chance(0.5) ? `\\tempo ${r.pick(['4', '8', '2', '4.'])} = ${r.int(60, 190)}` : `\\tempo "${r.pick(['Allegro', 'Andante', 'Moderato', 'Adagio', 'Presto'])}"`) : ''}
     ${music}
     \\bar "|."
   }
