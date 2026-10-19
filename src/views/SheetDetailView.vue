@@ -63,6 +63,7 @@ const zoomed = ref(false)
 const renaming = ref(false)
 const titleDraft = ref('')
 const composerDraft = ref('')
+const descriptionDraft = ref('')
 
 // ── Automatic detection ────────────────────────────────────────────────────
 const recogniser = useRecogniser()
@@ -272,6 +273,33 @@ function shiftStep(index: number, delta: number) {
   if (settings.audioEnabled) playNote(draft.value[index].note, context.value.instrument, 0.4)
 }
 
+/**
+ * Move the whole piece an octave. Handy when a part is written an octave away
+ * from where the instrument reads it, or detection got the clef's octave wrong.
+ */
+function shiftAllOctaves(delta: number) {
+  draft.value = draft.value.map((entry) => {
+    const midi = Note.midi(entry.note)
+    if (midi == null) return entry
+    return { ...entry, note: canonicalNote(midi + delta * 12), chosenFingeringId: undefined }
+  })
+  detectedRelatives.value = detectedRelatives.value.map((relative) =>
+    relative == null ? relative : relative + delta * 7,
+  )
+}
+
+/** Empty the draft. Nothing is lost until saved — Discard brings it back. */
+function clearAll() {
+  if (!draft.value.length) return
+  if (!window.confirm(`Remove all ${draft.value.length} notes? You can still discard before saving.`)) return
+  stopPlayback.value?.()
+  stopPlayback.value = null
+  draft.value = []
+  detectedRelatives.value = []
+  detectionWarnings.value = []
+  selectedIndex.value = null
+}
+
 /** A copy of the selected note right after it, to fix a note detection missed. */
 function insertAfter(index: number) {
   const entry = draft.value[index]
@@ -328,6 +356,7 @@ function startRename() {
   if (!sheet.value) return
   titleDraft.value = sheet.value.title
   composerDraft.value = sheet.value.composer
+  descriptionDraft.value = sheet.value.description ?? ''
   renaming.value = true
 }
 
@@ -336,6 +365,7 @@ async function saveRename() {
   await store.updateMeta(sheet.value.id, {
     title: titleDraft.value.trim() || sheet.value.title,
     composer: composerDraft.value,
+    description: descriptionDraft.value.trim(),
   })
   sheet.value = (await store.get(sheet.value.id)) ?? sheet.value
   renaming.value = false
@@ -396,7 +426,10 @@ async function deleteSheet() {
       <button type="button" class="min-w-0 text-left" @click="startRename">
         <h1 class="truncate text-xl">{{ sheet.title }}</h1>
         <p class="mt-0.5 truncate text-sm text-ink-400">
-          {{ sheet.composer || 'Tap to add a title or composer' }}
+          {{ sheet.composer || 'Tap to add a title, composer or description' }}
+        </p>
+        <p v-if="sheet.description" class="mt-1.5 text-sm whitespace-pre-line text-ink-200">
+          {{ sheet.description }}
         </p>
       </button>
       <div class="flex shrink-0 gap-2">
@@ -446,6 +479,13 @@ async function deleteSheet() {
         placeholder="Composer"
         aria-label="Composer"
         class="w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-ink-50 placeholder:text-ink-600 focus:border-accent-400 focus:outline-none"
+      />
+      <textarea
+        v-model="descriptionDraft"
+        rows="3"
+        placeholder="Description"
+        aria-label="Description"
+        class="w-full resize-y rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-ink-50 placeholder:text-ink-600 focus:border-accent-400 focus:outline-none"
       />
       <div class="flex gap-2">
         <button
@@ -608,6 +648,34 @@ async function deleteSheet() {
             {{ editing ? 'Done adding' : draft.length ? 'Add notes' : 'Note it down' }}
           </button>
         </div>
+      </div>
+
+      <!-- Whole-sequence edits. They only touch the draft, so Discard undoes them. -->
+      <div v-if="draft.length" class="flex flex-wrap gap-1.5" aria-label="Edit all notes">
+        <button
+          type="button"
+          title="Move every note down an octave"
+          class="rounded-md border border-ink-600 px-2 py-1 text-[11px] font-medium text-ink-200 transition-colors hover:border-accent-400"
+          @click="shiftAllOctaves(-1)"
+        >
+          All ▼ octave
+        </button>
+        <button
+          type="button"
+          title="Move every note up an octave"
+          class="rounded-md border border-ink-600 px-2 py-1 text-[11px] font-medium text-ink-200 transition-colors hover:border-accent-400"
+          @click="shiftAllOctaves(1)"
+        >
+          All ▲ octave
+        </button>
+        <button
+          type="button"
+          title="Remove every note"
+          class="ml-auto rounded-md border border-ink-600 px-2 py-1 text-[11px] font-medium text-ink-400 transition-colors hover:border-red-500/60 hover:text-red-300"
+          @click="clearAll"
+        >
+          Clear all
+        </button>
       </div>
 
       <div

@@ -13,6 +13,11 @@ export interface Sheet {
   id: string
   title: string
   composer: string
+  /**
+   * Free-text note about the sheet (where it is from, what to practise…).
+   * Optional and unindexed, so no Dexie version bump; older backups lack it.
+   */
+  description?: string
   createdAt: number
   updatedAt: number
   image: Blob
