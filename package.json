@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "samples:piano": "node scripts/render-piano-samples.mjs",
     "omr:eval": "tsx --tsconfig omr-eval/tsconfig.json omr-eval/eval.ts",
-    "omr:model": "cd omr-train && uv run python -m omr.export ${CKPT:-runs/current.pt} ../public/omr/detector ../src/omr/testing/detector.test.json"
+    "omr:model": "cd omr-train && uv run python -m omr.export ${CKPT:-runs/current.pt} ../public/omr/detector ../src/omr/testing/detector.test.json",
+    "omr:improve": "omr-train/improve.sh"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.1",

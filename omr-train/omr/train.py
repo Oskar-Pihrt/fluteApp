@@ -53,10 +53,13 @@ def main():
         start = ckpt['step']
 
     def lr_at(step):
-        warm = 500
-        if step < warm:
-            return args.lr * (step + 1) / warm
-        t = (step - warm) / max(1, args.steps - warm)
+        # The schedule runs over this run's own steps, so a resumed run warms up
+        # briefly and anneals again instead of inheriting a spent schedule.
+        done = step - start
+        warm = 200 if args.resume else 500
+        if done < warm:
+            return args.lr * (done + 1) / warm
+        t = (done - warm) / max(1, args.steps - start - warm)
         return args.lr * (0.02 + 0.98 * 0.5 * (1 + math.cos(math.pi * min(1.0, t))))
 
     loader = DataLoader(CropDataset(train_pages), batch_size=args.batch, num_workers=args.workers, persistent_workers=args.workers > 0, prefetch_factor=4 if args.workers else None)

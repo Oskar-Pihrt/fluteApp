@@ -341,10 +341,6 @@ async function saveRename() {
   renaming.value = false
 }
 
-/** Instruments this sheet can be re-filed under. */
-const otherInstruments = computed(() =>
-  INSTRUMENT_IDS.filter((id) => id !== context.value.instrument.id).map((id) => INSTRUMENTS[id]),
-)
 
 /**
  * Rewrite the piece for another instrument at the same sounding pitch. Warns
@@ -404,22 +400,6 @@ async function deleteSheet() {
         </p>
       </button>
       <div class="flex shrink-0 gap-2">
-        <label>
-          <span class="sr-only">Rewrite for another instrument</span>
-          <select
-            class="w-20 rounded-lg border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs font-medium text-ink-400 transition-colors hover:border-ink-500 focus:border-accent-400 focus:outline-none"
-            :value="''"
-            @change="
-              convertTo(($event.target as HTMLSelectElement).value as InstrumentId);
-              ($event.target as HTMLSelectElement).value = ''
-            "
-          >
-            <option value="" disabled>{{ context.instrument.shortName }}</option>
-            <option v-for="other in otherInstruments" :key="other.id" :value="other.id">
-              Rewrite for {{ other.noun }}
-            </option>
-          </select>
-        </label>
         <button
           type="button"
           class="shrink-0 rounded-lg border border-ink-700 px-3 py-1.5 text-xs font-medium text-ink-400 transition-colors hover:border-red-500/60 hover:text-red-300"
@@ -429,6 +409,28 @@ async function deleteSheet() {
         </button>
       </div>
     </header>
+
+    <!-- The instrument this part is written for. Switching rewrites every note
+         into the new instrument's written pitch, so the piece sounds the same. -->
+    <div v-if="!renaming" class="space-y-1.5">
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+        Notes written for — tap to transpose
+      </p>
+      <div role="radiogroup" aria-label="Instrument of this part" class="grid grid-cols-3 gap-0.5 rounded-lg border border-ink-700 bg-ink-950 p-0.5">
+        <button
+          v-for="id in INSTRUMENT_IDS"
+          :key="id"
+          type="button"
+          role="radio"
+          :aria-checked="context.instrument.id === id"
+          class="rounded-md px-1.5 py-1.5 text-xs font-semibold transition-colors"
+          :class="context.instrument.id === id ? 'bg-accent-400 text-ink-950' : 'text-ink-400 hover:text-ink-200'"
+          @click="context.instrument.id !== id && convertTo(id)"
+        >
+          {{ INSTRUMENTS[id].shortName }}
+        </button>
+      </div>
+    </div>
 
     <form v-else class="space-y-2" @submit.prevent="saveRename">
       <input
