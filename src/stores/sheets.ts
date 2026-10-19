@@ -60,7 +60,7 @@ export const useSheetsStore = defineStore('sheets', () => {
     return sheet.id
   }
 
-  async function updateMeta(id: string, patch: Pick<Sheet, 'title' | 'composer'>) {
+  async function updateMeta(id: string, patch: Pick<Sheet, 'title' | 'composer' | 'description'>) {
     await db.sheets.update(id, { ...patch, updatedAt: Date.now() })
     await loadAll()
   }
