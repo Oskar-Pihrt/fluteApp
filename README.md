@@ -199,9 +199,28 @@ Measured on pages with exact ground truth (`npm run omr:eval`, see
 
 | Input | Accuracy |
 | --- | --- |
-| Clean PDF / scan, LilyPond-engraved real parts | 99.3 % |
+| Clean PDF / scan, LilyPond-engraved real parts | 99.5 % |
 | Three real MuseScore parts (letters and octaves only) | 99.1–99.5 % |
-| Simulated phone photos (perspective, curl, shadow, noise) | 87.7 % |
+| Simulated phone photos (perspective, curl, shadow, noise) | 89.8 % |
+
+**Rhythm** — *Detect with rhythm* reads durations, dots, rests, time
+signatures, repeats, first/second endings and segno/coda/D.C./D.S. marks too,
+into a rhythm-mode score:
+
+| Input | Durations right | Measures adding up |
+| --- | --- | --- |
+| Synthetic clean pages (held-out Verovio, all symbols in the truth) | 98.8 % (dots 98.9 %) | 91.5 % |
+| Clean LilyPond-engraved real parts | 86.5 % | 92.2 % |
+| Simulated phone photos | 88.4 % | 91.7 % |
+
+On the synthetic pages the whole note-and-rest sequence with durations reads
+at 94.3 %. Real engraving is harder than the synthetic pages it mostly
+learned from (LilyPond's font, and no dot or rest truth to learn from there).
+Each measure is checked against its time signature; one that doesn't add up
+gets the network's own runner-up reading on one or two notes, and a misread
+time signature is corrected from the measures under it. Notes in a corrected
+measure are flagged for a look; a measure that still doesn't add up is tinted
+in the score — triplets, which the score can't write yet, end up there.
 
 Be honest about the last row: photos are the weak spot, and the photo number is
 from *simulated* photos. Dense, tightly packed parts photographed at an angle
@@ -254,14 +273,15 @@ counted from the end of the bar, 6/8 clicked in dotted quarters.
 importer reads back unchanged.
 
 MusicXML import reads the whole part — durations, rests, ties, time and key
-changes, repeats, endings, D.C./D.S. and tempo. Detection from a photo still
-reads pitches only, into a pitches-mode score whose measures follow the
-page's barlines.
+changes, repeats, endings, D.C./D.S. and tempo. Detection from a photo reads
+pitches only (*Detect notes*, into a pitches-mode score whose measures follow
+the page's barlines) or with rhythm (*Detect with rhythm*, above).
 
 ## Not built yet
 
-Durations are not yet **detected** from a photo — planned. Chords are detected but reduced to their top note, with a
-warning.
+Tuplets (triplets and the like) can't be written in the score yet, so a
+measure of them reads as too long. Chords are detected but reduced to their
+top note, with a warning.
 
 ## Logo and icons
 

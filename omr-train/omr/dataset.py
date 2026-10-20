@@ -21,7 +21,7 @@ import numpy as np
 import torch
 from torch.utils.data import IterableDataset, get_worker_info
 
-from .targets import CLASSES, load_anchors
+from .targets import CLASSES, RHYTHM_FIRST, load_anchors
 
 TARGET_S = 10.0
 STRIDE = 4
@@ -63,6 +63,27 @@ def gaussian_targets(anchors, out_h, out_w, sigma_cells=0.7):
         offset[1, iy, ix] = cy - iy
         mask[iy, ix] = 1.0
     return heat, offset, mask
+
+
+def attribute_targets(attributes, out_h, out_w):
+    """Duration and dot labels (H, W), −1 where unlabelled.
+
+    A label covers the 3×3 cells around its point, so it is still read
+    correctly when the detected peak lands a cell off.
+    """
+    dur = np.full((out_h, out_w), -1, np.int64)
+    dots = np.full((out_h, out_w), -1, np.int64)
+    for x, y, d, n in attributes:
+        ix, iy = int(x / STRIDE), int(y / STRIDE)
+        x0, x1 = max(0, ix - 1), min(out_w, ix + 2)
+        y0, y1 = max(0, iy - 1), min(out_h, iy + 2)
+        if x0 >= x1 or y0 >= y1:
+            continue
+        if d >= 0:
+            dur[y0:y1, x0:x1] = d
+        if n >= 0:
+            dots[y0:y1, x0:x1] = n
+    return dur, dots
 
 
 def augment(img, rng):
@@ -134,7 +155,7 @@ class CropDataset(IterableDataset):
         while True:
             img_path, json_path = rng.choice(self.pages)
             try:
-                truth, anchors, S = load_anchors(json_path)
+                truth, anchors, S, attributes, rhythm = load_anchors(json_path)
             except Exception:
                 continue
             if not S or not anchors:
@@ -142,12 +163,15 @@ class CropDataset(IterableDataset):
             page = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
             if page is None:
                 continue
+            class_mask = np.ones(len(CLASSES), np.float32)
+            if not rhythm:
+                class_mask[RHYTHM_FIRST:] = 0
             for _ in range(self.crops_per_page):
-                sample = self.crop(page, truth, anchors, S, rng)
+                sample = self.crop(page, truth, anchors, S, rng, attributes, class_mask)
                 if sample is not None:
                     yield sample
 
-    def crop(self, page, truth, anchors, S, rng):
+    def crop(self, page, truth, anchors, S, rng, attributes=(), class_mask=None):
         h, w = page.shape
         scale = TARGET_S / S * rng.uniform(0.85, 1.2)
         angle = rng.uniform(-self.rotate_deg, self.rotate_deg) if rng.random() < 0.5 else 0.0
@@ -173,8 +197,25 @@ class CropDataset(IterableDataset):
             if 0 <= nx < CROP and 0 <= ny < CROP:
                 pts.append((cls, nx, ny))
 
+        attrs = []
+        for x, y, d, n in attributes:
+            nx = M[0, 0] * x + M[0, 1] * y + M[0, 2]
+            ny = M[1, 0] * x + M[1, 1] * y + M[1, 2]
+            if 0 <= nx < CROP and 0 <= ny < CROP:
+                attrs.append((nx, ny, d, n))
+
         if rng.random() < self.augment_p:
             img = augment(img, rng)
         heat, offset, mask = gaussian_targets(pts, CROP // STRIDE, CROP // STRIDE)
+        dur, dots = attribute_targets(attrs, CROP // STRIDE, CROP // STRIDE)
         x = torch.from_numpy((1.0 - img[None]).astype(np.float32))  # ink = 1, paper = 0
-        return x, torch.from_numpy(heat), torch.from_numpy(offset), torch.from_numpy(mask)
+        cmask = class_mask if class_mask is not None else np.ones(len(CLASSES), np.float32)
+        return (
+            x,
+            torch.from_numpy(heat),
+            torch.from_numpy(offset),
+            torch.from_numpy(mask),
+            torch.from_numpy(dur),
+            torch.from_numpy(dots),
+            torch.from_numpy(cmask),
+        )

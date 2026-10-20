@@ -16,7 +16,7 @@ import type { Sheet } from '@/data/db'
 import { diatonicAtStaffPosition } from '@/domain/staff'
 import { lettersAlteredBy } from '@/omr/pitch'
 import { useRecogniser } from '@/omr/useRecogniser'
-import type { KeySignature, OmrWarning } from '@/omr/types'
+import type { KeySignature, OmrResult, OmrWarning } from '@/omr/types'
 import { createBlobUrl, revokeBlobUrl } from '@/data/images'
 import { playNote } from '@/domain/audio'
 import { playScore } from '@/domain/player'
@@ -400,7 +400,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
  * way through. Detection reads pitches, so the result is a pitches-mode score,
  * its measures where the page's barlines are.
  */
-async function detect() {
+async function detect(withRhythm = false) {
   if (!sheet.value) return
   if (noteCount.value && !window.confirm('Replace the notes already entered with detected ones?')) {
     return
@@ -414,6 +414,16 @@ async function detect() {
 
   detectionWarnings.value = outcome.warnings
   keyOverride.value = outcome.keySignature
+  if (withRhythm) {
+    if (outcome.rhythm?.measures.length) {
+      loadDetectedRhythm(outcome.rhythm, outcome.keySignature)
+      return
+    }
+    detectionWarnings.value = [
+      ...outcome.warnings,
+      { code: 'rhythm-unsure', message: 'This detector can’t read durations yet, so only the pitches were read.' },
+    ]
+  }
   const events = outcome.notes.map(
     (note): NoteEvent => ({
       kind: 'note',
@@ -436,6 +446,48 @@ async function detect() {
     detected,
   )
   selectedId.value = events[0]?.id ?? null
+  editing.value = false
+  view.value = 'score'
+}
+
+/**
+ * A detection with durations into a rhythm-mode score: measures, time
+ * signatures, repeats, endings and marks as read. Notes in a measure that
+ * needed a correction to add up are flagged; measures that still don't are
+ * tinted by the score itself.
+ */
+function loadDetectedRhythm(rhythm: NonNullable<OmrResult['rhythm']>, key: KeySignature) {
+  const relatives = new Map<string, number>()
+  const flagged: string[] = []
+  const measures: Score['measures'] = rhythm.measures.map((measure, index) => ({
+    id: eventId(),
+    ...(index === 0 ? { keyFifths: key.kind === '#' ? key.count : -key.count } : {}),
+    ...(measure.time ? { time: measure.time } : {}),
+    ...(measure.barStart ? { barStart: measure.barStart } : {}),
+    ...(measure.barEnd ? { barEnd: measure.barEnd } : {}),
+    ...(measure.volta ? { volta: measure.volta } : {}),
+    ...(measure.jumps?.length ? { jumps: measure.jumps } : {}),
+    events: measure.events.map((event) => {
+      const id = eventId()
+      if (event.kind === 'rest') return { kind: 'rest' as const, id, duration: event.duration }
+      if (event.relative != null) relatives.set(id, event.relative)
+      if (measure.fill === 'fixed' || event.durationScore < 0.5) flagged.push(id)
+      return {
+        kind: 'note' as const,
+        id,
+        pitch: event.pitch ?? 'B4',
+        duration: event.duration,
+        source: 'detected' as const,
+        ...(event.tie ? { tie: true } : {}),
+        ...(event.bbox ? { bbox: event.bbox } : {}),
+        confidence: flagged.includes(id) ? Math.min(event.confidence ?? 1, 0.4) : event.confidence,
+      }
+    }),
+  }))
+  score.value = { mode: 'rhythm', clef: 'treble', measures }
+  detectedRelatives.value = relatives
+  detectedIds.value = []
+  selectedId.value = notesOf(score.value)[0]?.id ?? null
   editing.value = false
   view.value = 'score'
 }
@@ -1010,9 +1062,19 @@ async function deleteSheet() {
             type="button"
             class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400 disabled:opacity-50"
             :disabled="recogniser.running.value"
-            @click="detect"
+            title="Read the pitches off the photo"
+            @click="detect(false)"
           >
             Detect notes
+          </button>
+          <button
+            type="button"
+            class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400 disabled:opacity-50"
+            :disabled="recogniser.running.value"
+            title="Read pitches and durations, measures, repeats and marks"
+            @click="detect(true)"
+          >
+            Detect with rhythm
           </button>
           <button
             type="button"

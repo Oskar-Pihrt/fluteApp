@@ -51,7 +51,7 @@ export interface DeriveOptions {
  * reading order lets a single "has the measure changed?" check reset the
  * accidentals in force.
  */
-function buildMeasureNumbering(barlines: Barline[], staffCount: number) {
+export function buildMeasureNumbering(barlines: Barline[], staffCount: number) {
   const perStaff: number[][] = Array.from({ length: Math.max(1, staffCount) }, () => [])
   for (const barline of barlines) {
     if (perStaff[barline.staffIndex]) perStaff[barline.staffIndex].push(barline.x)

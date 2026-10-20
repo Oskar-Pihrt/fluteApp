@@ -25,7 +25,7 @@ ROUND=$(cat runs/round 2>/dev/null || echo 0); ROUND=$((ROUND + 1)); echo $ROUND
 BASE=$((100000 + ROUND * 10000))
 log "round $ROUND: generating $GEN + $GEN pages (seeds from $BASE)"
 for i in 0 1 2; do
-  node gen/generate.mjs --from $((BASE + i * GEN / 3)) --count $((GEN / 3)) > data/gen-r$ROUND-$i.log 2>&1 &
+  node gen/generate.mjs --from $((BASE + i * GEN / 3)) --count $((GEN / 3)) --out data/verovio-rhythm > data/gen-r$ROUND-$i.log 2>&1 &
 done
 node gen/lilypond-random.mjs --from $((BASE + 5000)) --count "$GEN" --out data/lilyrand > data/lilyrand-r$ROUND.log 2>&1 &
 wait
@@ -36,31 +36,38 @@ wait
 START=$(uv run python -c "import torch; print(torch.load('runs/current.pt', map_location='cpu')['step'])")
 OUT=runs/r$ROUND
 log "fine-tuning from step $START for $STEPS steps"
-uv run python -m omr.train --data data/verovio data/lilypond data/lilyrand --resume runs/current.pt \
+uv run python -m omr.train --data data/verovio-rhythm data/lilypond data/lilyrand --resume runs/current.pt \
   --steps $((START + STEPS)) --lr "$LR" --batch 16 --workers 3 --threads 4 --out "$OUT" > "runs/r$ROUND.train.log" 2>&1
 
 # Judge the candidate against the model in use, on the same eval pages.
 mkdir -p runs/cand
 uv run python -m omr.export "$OUT/last.pt" runs/cand/detector runs/cand/test.json > /dev/null
 cd "$ROOT"
-FILTER='default/p1-150|photos/[^/]+/p1\.'
+FILTER='default/p1-150|photos/[^/]+/p1\.|verovio-rhythm/'
 npx tsx --tsconfig omr-eval/tsconfig.json omr-eval/eval.ts --quiet --filter "$FILTER" \
   --model omr-train/runs/cand/detector --label "cand-r$ROUND" > omr-train/runs/cand/eval.log 2>&1
 
+# Half pitch, half rhythm: the mean sequence accuracy over the groups (clean
+# pages, photos, synthetic count equally), and the mean of the rhythm numbers
+# the eval has — rhythm sequence on the synthetic pages, durations wherever
+# the truth has them. A model that reads no rhythm scores zero for that half.
 score() { python3 - "$1" <<'PY'
 import json, sys
 s = json.load(open(sys.argv[1]))['summary']
-groups = [v['sequenceAccuracy'] for k, v in s.items() if k != 'all']
-# Clean pages and photos count equally, whatever their number.
-print(sum(groups) / len(groups) if groups else s['all']['sequenceAccuracy'])
+groups = [v for k, v in s.items() if k != 'all']
+pitch = sum(g['sequenceAccuracy'] for g in groups) / len(groups)
+rhythm = [g[k] for g in groups for k in ('rhythmAccuracy', 'durationAccuracy') if g.get(k) is not None]
+print(0.5 * pitch + 0.5 * (sum(rhythm) / len(rhythm) if rhythm else 0))
 PY
 }
 NEW=$(score "omr-eval/reports/cand-r$ROUND.json")
-BEST=$(cat omr-train/runs/best 2>/dev/null || echo 0)
+# Scores from before rhythm counted (a bare number) aren't comparable.
+BEST=$(grep -o 'v2 [0-9.]*' omr-train/runs/best 2>/dev/null | cut -d' ' -f2 || true)
+BEST=${BEST:-0}
 log "candidate score $NEW (best so far $BEST)"
 if python3 -c "import sys; sys.exit(0 if float('$NEW') > float('$BEST') else 1)"; then
   cp "omr-train/$OUT/last.pt" omr-train/runs/current.pt
-  echo "$NEW" > omr-train/runs/best
+  echo "v2 $NEW" > omr-train/runs/best
   CKPT=runs/current.pt npm run omr:model > /dev/null
   log "ACCEPTED — public/omr/detector.* replaced; run npm test, then commit"
 else

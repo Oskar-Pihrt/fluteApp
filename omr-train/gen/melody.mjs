@@ -120,6 +120,8 @@ export function generatePiece(seed) {
     meterChange: r.chance(0.2),
     keyChange: r.chance(0.1),
     repeats: r.chance(0.35),
+    endings: r.chance(0.5),
+    jumps: r.chance(0.3),
     multiRest: r.chance(0.2),
     leaps: r.next() * 0.3,
   }
@@ -156,6 +158,9 @@ export function generatePiece(seed) {
   const measures = r.int(16, 48)
 
   const notes = [] // truth, in document order
+  const firstNote = {} // measure number → its first note's id, for marks attached to a measure
+  const measureTruth = {} // measure id → { left, right, ending }
+  const marks = {} // repeatMark or dir id → 'segno' | 'coda' | jump text class
   const noteMeasure = {} // note id → measure number, so controls land in their start's measure
   const controls = [] // slurs, ties, ottavas, dynamics … (MEI control events)
   let id = 0
@@ -169,6 +174,7 @@ export function generatePiece(seed) {
   let slurLeft = 0
   let slurStart = null
   let pendingTie = null
+  let pendingEnding = 0
 
   const measureXml = []
   for (let m = 1; m <= measures; m++) {
@@ -261,6 +267,7 @@ export function generatePiece(seed) {
 
         const noteId = nextId()
         noteMeasure[noteId] = m
+        firstNote[m] ??= noteId
         const dur = DUR[d]
         const dots = DOTTED.has(d) ? ' dots="1"' : ''
         const accidAttr = shown || cautionary ? ` accid="${accidName}"` : alteration ? ` accid.ges="${accidName}"` : ''
@@ -288,11 +295,11 @@ export function generatePiece(seed) {
             graceXml +
               `<chord dur="${dur}"${dots}>${noteXml.replace(` dur="${dur}"${dots}`, '')}<note xml:id="${lowId}" pname="${low.step}" oct="${underOttava ? low.oct - 1 : low.oct}"${lowAlter ? ` accid.ges="${{ '-1': 'f', 1: 's' }[lowAlter]}"` : ''}/></chord>`,
           )
-          notes.push({ id: noteId, midi: soundingMidi, grace: false, hollow: d >= 8, tied: !!pendingTie, chordTop: true })
+          notes.push({ id: noteId, midi: soundingMidi, grace: false, hollow: d >= 8, tied: !!pendingTie, chordTop: true, dur, dots: DOTTED.has(d) ? 1 : 0 })
           notes.push({ id: lowId, midi: 12 * (low.oct + 1) + STEP_SEMITONES[STEPS.indexOf(low.step)] + lowAlter, grace: false, hollow: d >= 8, tied: false, chordLow: true })
         } else {
           items.push(graceXml + noteXml)
-          notes.push({ id: noteId, midi: soundingMidi, grace: false, hollow: d >= 8, tied: !!pendingTie })
+          notes.push({ id: noteId, midi: soundingMidi, grace: false, hollow: d >= 8, tied: !!pendingTie, dur, dots: DOTTED.has(d) ? 1 : 0 })
         }
 
         if (pendingTie) controls.push(`<tie startid="#${pendingTie.id}" endid="#${noteId}"/>`)
@@ -332,15 +339,28 @@ export function generatePiece(seed) {
     }
 
     // An unfinished ottava or slur must not cross into a meter or key change.
-    let attrs = ''
-    if (features.repeats && m === 1 && r.chance(0.3)) attrs += ' left="rptstart"'
-    if (features.repeats && m % 8 === 0 && m !== measures && r.chance(0.4)) attrs += r.pick([' right="rptend"', ' right="dbl"', ' right="rptboth"'])
-    if (m === measures) attrs += ' right="end"'
+    let left = ''
+    let right = ''
+    if (features.repeats && m === 1 && r.chance(0.3)) left = 'rptstart'
+    if (features.repeats && m % 8 === 0 && m !== measures && r.chance(0.6)) {
+      right = r.weighted([['rptend', 3], ['dbl', 1], ['rptboth', 1]])
+    }
+    if (m === measures) right = 'end'
+    // A first and second ending around a repeat: this measure is the first,
+    // the next the second.
+    let ending = pendingEnding
+    pendingEnding = 0
+    if (!ending && right === 'rptend' && features.endings && m + 1 < measures && r.chance(0.6)) {
+      ending = 1
+      pendingEnding = 2
+    }
+    const attrs = `${left ? ` left="${left}"` : ''}${right ? ` right="${right}"` : ''}`
     const tempo = m === 1 && r.chance(0.7) ? `<tempo staff="1" tstamp="1" place="above">${r.pick(TEMPI)}</tempo>` : ''
-    measureXml.push({ n: m, xml: `<measure n="${m}"${attrs}><staff n="1"><layer n="1">${layer}</layer></staff>${tempo}`, controls: [] })
+    measureTruth[`m${m}`] = { left, right, ending }
+    measureXml.push({ n: m, ending, xml: `<measure xml:id="m${m}" n="${m}"${attrs}><staff n="1"><layer n="1">${layer}</layer></staff>${tempo}`, controls: [] })
 
     // Meter or key change at a phrase boundary.
-    if (m < measures && m % 4 === 0) {
+    if (m < measures && m % 4 === 0 && !pendingEnding) {
       let change = ''
       if (features.meterChange && r.chance(0.35)) {
         meter = r.weighted(meters)
@@ -357,6 +377,41 @@ export function generatePiece(seed) {
   const last = measureXml.filter((m) => !m.isScoreDef).at(-1)
   if (ottavaStart) controls.push(`<octave staff="1" startid="#${ottavaStart}" endid="#${ottavaLastId}" dis="8" dis.place="above"/>`)
 
+  // Navigation marks: a segno or coda glyph on a measure's first note, and the
+  // jump texts (D.C., D.S. al Fine, To Coda …) at a measure's last beat.
+  const markControls = [] // [measure number, xml]
+  if (features.jumps && measures >= 8) {
+    const jump = r.pick(['dc', 'dc_al_fine', 'dc_al_coda', 'ds', 'ds_al_fine', 'ds_al_coda'])
+    const TEXT = { dc: 'D.C.', dc_al_fine: 'D.C. al Fine', dc_al_coda: 'D.C. al Coda', ds: 'D.S.', ds_al_fine: 'D.S. al Fine', ds_al_coda: 'D.S. al Coda' }
+    const withNotes = Object.keys(firstNote).map(Number)
+    const pickMeasure = (lo, hi) => {
+      const options = withNotes.filter((n) => n >= lo && n <= hi)
+      return options.length ? r.pick(options) : null
+    }
+    const text = (n, cls, string) => {
+      const id = nextId('d')
+      marks[id] = cls
+      const [count] = meter
+      markControls.push([n, `<dir xml:id="${id}" staff="1" tstamp="${count}" place="${r.pick(['above', 'below'])}">${r.chance(0.5) ? `<rend fontstyle="italic">${string}</rend>` : string}</dir>`])
+    }
+    const glyph = (n, func) => {
+      const id = nextId('k')
+      marks[id] = func
+      markControls.push([n, `<repeatMark xml:id="${id}" func="${func}" staff="1" startid="#${firstNote[n]}"/>`])
+    }
+    const jumpAt = jump.endsWith('coda') ? measures - 2 : measures
+    if (jump.startsWith('ds')) {
+      const segno = pickMeasure(2, Math.floor(measures / 3))
+      if (segno) glyph(segno, 'segno')
+    }
+    if (jump.endsWith('fine')) text(r.int(4, jumpAt - 2), 'fine', 'Fine')
+    if (jump.endsWith('coda')) {
+      text(r.int(4, jumpAt - 2), 'to_coda', 'To Coda')
+      if (firstNote[jumpAt + 1]) glyph(jumpAt + 1, 'coda')
+    }
+    text(jumpAt, jump, TEXT[jump])
+  }
+
   // Every control event goes in the measure that holds its start note.
   const byNumber = Object.fromEntries(measureXml.filter((x) => !x.isScoreDef).map((x) => [x.n, x]))
   for (const control of controls) {
@@ -364,7 +419,16 @@ export function generatePiece(seed) {
     ;(byNumber[noteMeasure[start]] ?? last).controls.push(control)
   }
 
-  const section = measureXml.map((m) => (m.isScoreDef ? m.xml : `${m.xml}${m.controls.join('')}</measure>`)).join('\n')
+  for (const [n, xml] of markControls) byNumber[n]?.controls.push(xml)
+
+  let endingId = 0
+  const section = measureXml
+    .map((m) => {
+      if (m.isScoreDef) return m.xml
+      const body = `${m.xml}${m.controls.join('')}</measure>`
+      return m.ending ? `<ending xml:id="e${++endingId}" n="${m.ending}">${body}</ending>` : body
+    })
+    .join('\n')
 
   const title = `${r.pick(TITLES)}${r.chance(0.5) ? ` ${r.int(1, 30)}` : ''}`
   const composer = r.pick(COMPOSERS)
@@ -378,7 +442,7 @@ export function generatePiece(seed) {
 ${section}
 </section></score></mdiv></body></music></mei>`
 
-  return { mei, notes, features, instrument }
+  return { mei, notes, features, instrument, measureTruth, marks }
 }
 
 const keysigAttr = (fifths) => (fifths === 0 ? '0' : fifths > 0 ? `${fifths}s` : `${-fifths}f`)

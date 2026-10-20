@@ -117,6 +117,7 @@ export type OmrWarningCode =
   | 'chord-found'
   | 'out-of-range'
   | 'accidental-unclear'
+  | 'rhythm-unsure'
 
 export interface OmrWarning {
   code: OmrWarningCode
@@ -127,6 +128,11 @@ export interface OmrWarning {
 
 export interface OmrResult {
   notes: RecognisedNote[]
+  /**
+   * The piece with durations, measures, signatures and marks — when the
+   * network reads rhythm. `notes` stays the flat pitch sequence.
+   */
+  rhythm?: import('./rhythm').Rhythm
   staves: Staff[]
   scale: StaffScale
   keySignature: KeySignature

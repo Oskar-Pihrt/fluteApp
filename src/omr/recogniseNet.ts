@@ -169,15 +169,22 @@ export function recogniseWithNet(gray: Bitmap, net: Net, options: NetRecogniseOp
   mark = clock()
   const assembled = assemble(detections, staves, scale, options)
   diagnostics.noteheadCount = assembled.noteheadCount
-  const notes = assembled.notes.map((note) => {
+  const toImage = (box: { x: number; y: number; width: number; height: number }) => {
     // Back through the straightening first: the box is on the levelled page.
-    let bbox = note.bbox
+    let bbox = box
     if (dewarp) {
       const centre = dewarp.toSource(bbox.x + bbox.width / 2, bbox.y + bbox.height / 2)
       bbox = { ...bbox, y: centre.y - bbox.height / 2 }
     }
-    return { ...note, bbox: normaliseBox(bbox, page, skewDeg, 1 / factor, gray) }
-  })
+    return normaliseBox(bbox, page, skewDeg, 1 / factor, gray)
+  }
+  const notes = assembled.notes.map((note) => ({ ...note, bbox: toImage(note.bbox) }))
+  const rhythm = assembled.rhythm && {
+    measures: assembled.rhythm.measures.map((measure) => ({
+      ...measure,
+      events: measure.events.map((event) => (event.bbox ? { ...event, bbox: toImage(event.bbox) } : event)),
+    })),
+  }
   timings.pitch = clock() - mark
 
   if (!notes.length) {
@@ -187,6 +194,13 @@ export function recogniseWithNet(gray: Bitmap, net: Net, options: NetRecogniseOp
     })
   }
   warnings.push(...noteWarnings(notes, assembled.chordCount, options.playableNotes))
+  const off = rhythm?.measures.filter((m) => m.fill === 'off').length ?? 0
+  if (off) {
+    warnings.push({
+      code: 'rhythm-unsure',
+      message: `${off} ${off === 1 ? 'measure doesn’t' : 'measures don’t'} add up to the time signature — they are tinted in the score. Check their durations.`,
+    })
+  }
   report('pitch', 1)
 
   return {
@@ -198,6 +212,7 @@ export function recogniseWithNet(gray: Bitmap, net: Net, options: NetRecogniseOp
       skewDeg,
       barlineXs: assembled.barlines.map((b) => b.x),
       warnings,
+      ...(rhythm ? { rhythm } : {}),
       analysedWidth: page.width,
       analysedHeight: page.height,
       timings,

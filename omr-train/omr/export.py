@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 
 from .model import ConvBN, Detector, DWSep, Residual
-from .targets import CLASSES
+from .targets import CLASSES, DURATIONS
 
 
 class Exporter:
@@ -107,14 +107,17 @@ def export(model: Detector, out_base: str, test_path: str | None = None):
     h = e.module(d4, model.head)
     heat = e.module(h, model.heat)
     offset = e.module(h, model.offset)
+    dur = e.module(h, model.dur)
+    dots = e.module(h, model.dots)
     manifest = {
         'format': 'fluteapp-omr-net',
-        'version': 1,
+        'version': 2,
         'classes': CLASSES,
+        'durations': DURATIONS,
         'inputStaffSpace': 10,
         'stride': 4,
         'inputMultiple': 16,
-        'outputs': {'heat': heat, 'offset': offset},
+        'outputs': {'heat': heat, 'offset': offset, 'dur': dur, 'dots': dots},
         'ops': e.ops,
     }
     with open(out_base + '.json', 'w') as f:
@@ -125,9 +128,18 @@ def export(model: Detector, out_base: str, test_path: str | None = None):
     g = torch.Generator().manual_seed(0)
     sample = (torch.rand(1, 1, 64, 48, generator=g) > 0.7).float()
     with torch.no_grad():
-        hl, ol = model(sample)
+        hl, ol, dl, tl = model(sample)
     with open(test_path or out_base + '.test.json', 'w') as f:
-        json.dump({'input': sample[0, 0].numpy().round(4).tolist(), 'heat': hl[0].numpy().round(5).tolist(), 'offset': ol[0].numpy().round(5).tolist()}, f)
+        json.dump(
+            {
+                'input': sample[0, 0].numpy().round(4).tolist(),
+                'heat': hl[0].numpy().round(5).tolist(),
+                'offset': ol[0].numpy().round(5).tolist(),
+                'dur': dl[0].numpy().round(5).tolist(),
+                'dots': tl[0].numpy().round(5).tolist(),
+            },
+            f,
+        )
     print(f'{len(e.ops)} ops, {e.offset} weights ({e.offset * 2 / 1024:.0f} KiB)')
 
 
