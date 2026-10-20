@@ -2,6 +2,7 @@ import type { Detection } from './detector'
 import type { AccidentalGlyph, Barline, ClefRegion } from './glyphs'
 import { detectKeySignature } from './glyphs'
 import { derivePitches } from './pitch'
+import { assembleRhythm, type Rhythm } from './rhythm'
 import { relativeAt, staffForY, yAtRelative } from './staves'
 import type { KeySignature, Notehead, PrintedAccidental, RecognisedNote, Staff, StaffScale } from './types'
 
@@ -37,6 +38,8 @@ export interface Assembled {
   /** Noteheads found before chords were reduced. */
   noteheadCount: number
   chordCount: number
+  /** Measures with durations — when the network reads them (version 2 and later). */
+  rhythm?: Rhythm
 }
 
 export function assemble(detections: Detection[], staves: Staff[], scale: StaffScale, options: AssembleOptions = {}): Assembled {
@@ -55,7 +58,8 @@ export function assemble(detections: Detection[], staves: Staff[], scale: StaffS
   })
 
   // ── Noteheads ────────────────────────────────────────────────────────────
-  const heads: (Notehead & { grace: boolean; score: number })[] = []
+  type Head = Notehead & { grace: boolean; score: number; durations?: Detection['durations']; dots?: number }
+  const heads: Head[] = []
   for (const d of detections) {
     if (d.cls !== 'head_filled' && d.cls !== 'head_hollow' && d.cls !== 'head_grace') continue
     if (d.cls === 'head_grace' && !includeGrace) continue
@@ -77,6 +81,8 @@ export function assemble(detections: Detection[], staves: Staff[], scale: StaffS
       confidence: d.score * Math.max(0.3, 1 - Math.max(0, residual - 0.25)),
       grace: d.cls === 'head_grace',
       score: d.score,
+      durations: d.durations,
+      dots: d.dots,
     })
   }
   // Two classes can fire on one head (a grace note read as both); keep the stronger.
@@ -156,19 +162,46 @@ export function assemble(detections: Detection[], staves: Staff[], scale: StaffS
 
   // ── Ties ─────────────────────────────────────────────────────────────────
   const tieMarks = detections.filter((d) => d.cls === 'tied_head')
+  const continues = shifted.map(
+    (head, i) =>
+      tieMarks.some((t) => Math.abs(t.x - head.x) < S * 0.6 && Math.abs(t.y - head.y) < S * 0.5) &&
+      i > 0 &&
+      notes[i - 1].note === notes[i].note,
+  )
   const out: RecognisedNote[] = []
-  shifted.forEach((head, i) => {
+  shifted.forEach((_, i) => {
     const note = notes[i]
-    const tied = tieMarks.some((t) => Math.abs(t.x - head.x) < S * 0.6 && Math.abs(t.y - head.y) < S * 0.5)
-    const previous = out[out.length - 1]
-    if (tied && previous && previous.note === note.note) {
+    if (continues[i]) {
       note.tied = true
       if (mergeTies) return
     }
     out.push(note)
   })
 
-  return { notes: out, key, barlines, noteheadCount: kept.length, chordCount }
+  // ── Rhythm, when the network reads durations ─────────────────────────────
+  const rhythm = shifted.some((head) => (head as Head).durations)
+    ? assembleRhythm({
+        notes: shifted.map((head, i) => ({
+          pitch: notes[i].note,
+          relative: head.relative,
+          x: head.x,
+          staffIndex: head.staffIndex,
+          bbox: notes[i].bbox,
+          confidence: notes[i].confidence,
+          grace: (head as Head).grace,
+          tied: continues[i],
+          durations: (head as Head).durations,
+          dots: (head as Head).dots,
+        })),
+        detections,
+        staves,
+        barlines,
+        S,
+        contentStartX,
+      })
+    : undefined
+
+  return { notes: out, key, barlines, noteheadCount: kept.length, chordCount, ...(rhythm ? { rhythm } : {}) }
 }
 
 /** The key most staves agree on — what the review UI shows as the piece's key. */

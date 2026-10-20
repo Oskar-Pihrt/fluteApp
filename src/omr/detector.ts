@@ -18,7 +18,26 @@ export interface Detection {
   x: number
   y: number
   score: number
+  /**
+   * Noteheads, with a version-2 network: each duration's probability, most
+   * likely first — the runner-up is what a measure that doesn't add up tries.
+   */
+  durations?: { name: string; p: number }[]
+  /** Noteheads and rests: the number of augmentation dots. */
+  dots?: number
 }
+
+/** Softmax over the channels of one cell. */
+function cellProbabilities(tensor: Tensor, gx: number, gy: number): number[] {
+  const plane = tensor.h * tensor.w
+  const logits = Array.from({ length: tensor.c }, (_, c) => tensor.data[c * plane + gy * tensor.w + gx])
+  const top = Math.max(...logits)
+  const exps = logits.map((l) => Math.exp(l - top))
+  const sum = exps.reduce((a, b) => a + b, 0)
+  return exps.map((e) => e / sum)
+}
+
+const HEAD_CLASSES = new Set(['head_filled', 'head_hollow'])
 
 /** Per-class score a peak must reach. Noteheads are the precision that matters. */
 const DEFAULT_THRESHOLD = 0.35
@@ -137,7 +156,8 @@ export function detectSymbols(net: Net, page: Bitmap, options: DetectOptions = {
       }
     }
 
-    const { heat, offset } = runNet(net, input)
+    const { heat, offset, dur, dots } = runNet(net, input)
+    const durationNames = net.manifest.durations ?? []
     const plane = heat.h * heat.w
     for (let c = 0; c < classes.length; c++) {
       const threshold = THRESHOLDS[classes[c]] ?? DEFAULT_THRESHOLD
@@ -166,7 +186,18 @@ export function detectSymbols(net: Net, page: Bitmap, options: DetectOptions = {
           const y = y0 + (gy + offset.data[plane + gy * heat.w + gx]) * stride
           // Keep only peaks in this tile's core; the margin belongs to a neighbour.
           if (x < tile.x || x >= tile.x + tile.w || y < tile.y || y >= tile.y + tile.h) continue
-          detections.push({ cls: classes[c], x, y, score: 1 / (1 + Math.exp(-v)) })
+          const detection: Detection = { cls: classes[c], x, y, score: 1 / (1 + Math.exp(-v)) }
+          const isHead = HEAD_CLASSES.has(classes[c])
+          if (dur && isHead) {
+            detection.durations = cellProbabilities(dur, gx, gy)
+              .map((p, i) => ({ name: durationNames[i], p }))
+              .sort((a, b) => b.p - a.p)
+          }
+          if (dots && (isHead || classes[c].startsWith('rest_'))) {
+            const p = cellProbabilities(dots, gx, gy)
+            detection.dots = p.indexOf(Math.max(...p))
+          }
+          detections.push(detection)
         }
       }
     }

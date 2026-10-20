@@ -18,7 +18,7 @@ import { Note } from 'tonal'
 import { loadNet, type NetManifest } from '@/omr/net'
 import { recognise } from '@/omr/recognise'
 import { recogniseWithNet } from '@/omr/recogniseNet'
-import { levenshtein, type PageTruth, readPgm, truthSequence } from './lib'
+import { levenshtein, type PageTruth, readPgm, truthDuration, truthRhythm, truthSequence } from './lib'
 
 const ROOT = dirname(fileURLToPath(import.meta.url))
 const args = process.argv.slice(2)
@@ -67,6 +67,16 @@ interface PageScore {
   pitchErrors: Record<string, number>
   ms: number
   warnings: string[]
+  /** Rhythm, when the detector reads it: durations and dots of matched heads. */
+  durMatched: number
+  durCorrect: number
+  dotsMatched: number
+  dotsCorrect: number
+  /** Rhythm eval pages: edit distance over note/rest tokens, and measures. */
+  rhythmEdits: number
+  rhythmLength: number
+  measures: number
+  measuresFitting: number
 }
 
 /** Which bucket a page reports under: source and resolution. */
@@ -135,6 +145,53 @@ for (const page of pages) {
     }
   }
 
+  // ── Rhythm ──────────────────────────────────────────────────────────────
+  let durMatched = 0
+  let durCorrect = 0
+  let dotsMatched = 0
+  let dotsCorrect = 0
+  let rhythmEdits = 0
+  let rhythmLength = 0
+  const measures = result.rhythm?.measures ?? []
+  if (result.rhythm) {
+    const taken = new Set<number>()
+    for (const event of measures.flatMap((m) => m.events)) {
+      if (event.kind !== 'note' || !event.bbox) continue
+      const cx = (event.bbox.x + event.bbox.width / 2) * gray.width
+      const cy = (event.bbox.y + event.bbox.height / 2) * gray.height
+      let best = -1
+      let bestDistance = S * 0.6
+      truthSeq.forEach((head, index) => {
+        if (taken.has(index)) return
+        const distance = Math.hypot(head.x - cx, head.y - cy)
+        if (distance < bestDistance) {
+          bestDistance = distance
+          best = index
+        }
+      })
+      if (best < 0) continue
+      taken.add(best)
+      const head = truthSeq[best]
+      const want = truthDuration(head)
+      if (want && !head.grace) {
+        durMatched++
+        if (want === event.duration.type) durCorrect++
+      }
+      if (head.dots !== undefined && !head.grace) {
+        dotsMatched++
+        if (head.dots === event.duration.dots) dotsCorrect++
+      }
+    }
+    if (truth.rhythm) {
+      const want = truthRhythm(truth)
+      const got = measures
+        .flatMap((m) => m.events)
+        .map((e) => (e.kind === 'rest' ? 'r' : `${midiOf(e.pitch ?? '')}:${e.duration.type}:${e.duration.dots}`))
+      rhythmEdits = levenshtein(got, want)
+      rhythmLength = want.length
+    }
+  }
+
   const score: PageScore = {
     page: relative(ROOT, page),
     group: groupOf(page),
@@ -150,6 +207,14 @@ for (const page of pages) {
     pitchErrors,
     ms,
     warnings: result.warnings.map((w) => w.code),
+    durMatched,
+    durCorrect,
+    dotsMatched,
+    dotsCorrect,
+    rhythmEdits,
+    rhythmLength,
+    measures: measures.length,
+    measuresFitting: measures.filter((m) => m.fill !== 'off').length,
   }
   scores.push(score)
   if (!quiet) {
@@ -169,6 +234,10 @@ interface Summary {
   pitchAccuracy: number
   meanMs: number
   pagesAbove95: number
+  durationAccuracy: number | null
+  dotsAccuracy: number | null
+  rhythmAccuracy: number | null
+  measuresFitting: number | null
 }
 
 function summarise(list: PageScore[]): Summary {
@@ -183,6 +252,10 @@ function summarise(list: PageScore[]): Summary {
     pitchAccuracy: sum((s) => s.pitchCorrect) / Math.max(1, sum((s) => s.matchedHeads)),
     meanMs: sum((s) => s.ms) / Math.max(1, list.length),
     pagesAbove95: list.filter((s) => 1 - s.edits / Math.max(1, s.truthLength) >= 0.95).length,
+    durationAccuracy: sum((s) => s.durMatched) ? sum((s) => s.durCorrect) / sum((s) => s.durMatched) : null,
+    dotsAccuracy: sum((s) => s.dotsMatched) ? sum((s) => s.dotsCorrect) / sum((s) => s.dotsMatched) : null,
+    rhythmAccuracy: sum((s) => s.rhythmLength) ? Math.max(0, 1 - sum((s) => s.rhythmEdits) / sum((s) => s.rhythmLength)) : null,
+    measuresFitting: sum((s) => s.measures) ? sum((s) => s.measuresFitting) / sum((s) => s.measures) : null,
   }
 }
 
@@ -191,7 +264,8 @@ const summary: Record<string, Summary> = { all: summarise(scores) }
 for (const group of groups) summary[group] = summarise(scores.filter((s) => s.group === group))
 
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`.padStart(7)
-console.log('\n' + 'group'.padEnd(34) + 'pages   seq.acc  played   recall  precis.  pitch   ≥95%    ms')
+const opt = (v: number | null) => (v === null ? '      –' : pct(v))
+console.log('\n' + 'group'.padEnd(34) + 'pages   seq.acc  played   recall  precis.  pitch   ≥95%    ms   dur.   dots  rhythm  bars')
 for (const [name, s] of Object.entries(summary)) {
   console.log(
     name.padEnd(34) +
@@ -202,7 +276,11 @@ for (const [name, s] of Object.entries(summary)) {
       pct(s.precision) +
       pct(s.pitchAccuracy) +
       `${s.pagesAbove95}/${s.pages}`.padStart(8) +
-      Math.round(s.meanMs).toString().padStart(6),
+      Math.round(s.meanMs).toString().padStart(6) +
+      opt(s.durationAccuracy) +
+      opt(s.dotsAccuracy) +
+      opt(s.rhythmAccuracy) +
+      opt(s.measuresFitting),
   )
 }
 

@@ -17,19 +17,26 @@ describe.skipIf(!hasModel)('detector network runtime', () => {
     const manifest = JSON.parse(readFileSync(`${base}.json`, 'utf8')) as NetManifest
     const bin = readFileSync(`${base}.bin`)
     const net = loadNet(manifest, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength))
-    const ref = JSON.parse(readFileSync(reference, 'utf8')) as { input: number[][]; heat: number[][][]; offset: number[][][] }
+    type Planes = number[][][]
+    const ref = JSON.parse(readFileSync(reference, 'utf8')) as { input: number[][]; heat: Planes; offset: Planes; dur?: Planes; dots?: Planes }
     const h = ref.input.length
     const w = ref.input[0].length
-    const { heat, offset } = runNet(net, { c: 1, h, w, data: Float32Array.from(ref.input.flat()) })
+    const outputs = runNet(net, { c: 1, h, w, data: Float32Array.from(ref.input.flat()) })
+    const { heat } = outputs
 
     // Weights are stored as float16, so allow for their rounding.
     let worst = 0
-    ref.heat.forEach((plane, c) =>
-      plane.forEach((row, y) => row.forEach((v, x) => (worst = Math.max(worst, Math.abs(heat.data[(c * heat.h + y) * heat.w + x] - v))))),
-    )
-    ref.offset.forEach((plane, c) =>
-      plane.forEach((row, y) => row.forEach((v, x) => (worst = Math.max(worst, Math.abs(offset.data[(c * offset.h + y) * offset.w + x] - v))))),
-    )
+    for (const name of ['heat', 'offset', 'dur', 'dots'] as const) {
+      const expected = ref[name]
+      const got = outputs[name]
+      if (!expected) continue
+      expect(got, `output ${name}`).toBeDefined()
+      expected.forEach((plane, c) =>
+        plane.forEach((row, y) =>
+          row.forEach((v, x) => (worst = Math.max(worst, Math.abs(got!.data[(c * got!.h + y) * got!.w + x] - v)))),
+        ),
+      )
+    }
     expect(heat.c).toBe(manifest.classes.length)
     expect(worst).toBeLessThan(0.05)
   })

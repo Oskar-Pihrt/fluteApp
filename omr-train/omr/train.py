@@ -16,7 +16,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from .dataset import CropDataset, find_pages
-from .model import Detector, focal_loss, offset_loss
+from .model import Detector, attribute_loss, focal_loss, offset_loss
 
 
 def main():
@@ -31,6 +31,11 @@ def main():
     p.add_argument('--width', type=float, default=1.0)
     p.add_argument('--save-every', type=int, default=1000)
     p.add_argument('--resume', default=None)
+    p.add_argument(
+        '--init',
+        default=None,
+        help='warm-start weights from a checkpoint whose heads may differ (new classes or outputs)',
+    )
     p.add_argument('--val-fraction', type=float, default=0.03)
     args = p.parse_args()
 
@@ -46,6 +51,23 @@ def main():
     print(f'{sum(p.numel() for p in model.parameters()) / 1e3:.0f}k parameters', flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     start = 0
+    if args.init:
+        # Every tensor whose shape matches is copied; a heatmap layer with more
+        # classes keeps the old classes' rows, so only the new ones start cold.
+        old = torch.load(args.init, map_location='cpu')['model']
+        own = model.state_dict()
+        copied = 0
+        for name, tensor in old.items():
+            if name not in own:
+                continue
+            if own[name].shape == tensor.shape:
+                own[name] = tensor
+                copied += 1
+            elif own[name].shape[1:] == tensor.shape[1:] and own[name].shape[0] > tensor.shape[0]:
+                own[name][: tensor.shape[0]] = tensor
+                copied += 1
+        model.load_state_dict(own)
+        print(f'warm start: {copied} tensors from {args.init}', flush=True)
     if args.resume:
         ckpt = torch.load(args.resume, map_location='cpu')
         model.load_state_dict(ckpt['model'])
@@ -56,7 +78,7 @@ def main():
         # The schedule runs over this run's own steps, so a resumed run warms up
         # briefly and anneals again instead of inheriting a spent schedule.
         done = step - start
-        warm = 200 if args.resume else 500
+        warm = 200 if args.resume or args.init else 500
         if done < warm:
             return args.lr * (done + 1) / warm
         t = (done - warm) / max(1, args.steps - start - warm)
@@ -75,33 +97,46 @@ def main():
     running = []
     step = start
     try:
-        for x, heat, off, mask in loader:
+        for x, heat, off, mask, dur, dots, cmask in loader:
             if step >= args.steps:
                 break
             for g in opt.param_groups:
                 g['lr'] = lr_at(step)
-            logits, offset = model(x)
-            lh = focal_loss(logits, heat)
+            logits, offset, dur_logits, dots_logits = model(x)
+            lh = focal_loss(logits, heat, cmask)
             lo = offset_loss(offset, off, mask)
-            loss = lh + lo
+            ld = attribute_loss(dur_logits, dur)
+            lt = attribute_loss(dots_logits, dots)
+            loss = lh + lo + 0.5 * ld + 0.5 * lt
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
             opt.step()
-            running.append((lh.item(), lo.item()))
+            running.append((lh.item(), lo.item(), ld.item(), lt.item()))
             step += 1
             if step % 100 == 0:
                 mh = sum(r[0] for r in running) / len(running)
                 mo = sum(r[1] for r in running) / len(running)
+                md = sum(r[2] for r in running) / len(running)
+                mt = sum(r[3] for r in running) / len(running)
                 running = []
                 rate = (step - start) / (time.time() - t0)
-                print(f'step {step}  heat {mh:.3f}  offset {mo:.3f}  lr {lr_at(step):.5f}  {rate:.2f} it/s', flush=True)
+                print(
+                    f'step {step}  heat {mh:.3f}  offset {mo:.3f}  dur {md:.3f}  dots {mt:.3f}  lr {lr_at(step):.5f}  {rate:.2f} it/s',
+                    flush=True,
+                )
             if step % args.save_every == 0:
                 model.eval()
                 with torch.no_grad():
-                    vl = [focal_loss(model(vx)[0], vh).item() for vx, vh, _, _ in val_batches]
+                    heat_losses, right, total = [], 0, 0
+                    for vx, vh, _, _, vd, _, vm in val_batches:
+                        vlogits, _, vdur, _ = model(vx)
+                        heat_losses.append(focal_loss(vlogits, vh, vm).item())
+                        labelled = vd >= 0
+                        right += (vdur.argmax(1)[labelled] == vd[labelled]).sum().item()
+                        total += labelled.sum().item()
                 model.train()
-                print(f'val heat {sum(vl) / len(vl):.3f}', flush=True)
+                print(f'val heat {sum(heat_losses) / len(heat_losses):.3f}  duration accuracy {right / max(1, total):.3f}', flush=True)
                 save(step)
                 save(step, f'step{step}.pt')
     finally:

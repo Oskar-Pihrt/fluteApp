@@ -109,6 +109,7 @@ const TRACKED = new Set([
   'note', 'notehead', 'accid', 'keyAccid', 'keySig', 'clef', 'barLine', 'octave', 'tie', 'slur', 'staff',
   'rest', 'mRest', 'multiRest', 'beam', 'stem', 'dots', 'artic', 'dynam', 'dir', 'tempo', 'trill', 'fing',
   'hairpin', 'meterSig', 'chord', 'tuplet', 'flag', 'ledgerLines', 'mNum', 'pgHead', 'label', 'reh',
+  'measure', 'ending', 'repeatMark',
 ])
 
 /**
@@ -135,14 +136,27 @@ export function extractBoxes(svg) {
 
   const elements = []
   const stack = [{ m: [1, 0, 0, 1, 0, 0], tracked: [], skip: false }]
-  for (const match of body.matchAll(/<(\/?)(g|path|rect|polygon|polyline|ellipse|use|svg|text)\b([^>]*?)(\/?)>/g)) {
+  for (const match of body.matchAll(/<(\/?)(g|path|rect|polygon|polyline|ellipse|use|svg|text|tspan)\b([^>]*?)(\/?)>/g)) {
     const [, closing, name, attrBody, selfClosing] = match
     if (closing) {
       if (name === 'g' || name === 'svg' || name === 'text') stack.pop()
       continue
     }
+    if (name === 'tspan') {
+      // Text has no outline to measure; remember where it starts and how big
+      // it is, so its box can be estimated from the string.
+      const own = stack[stack.length - 1].tracked.at(-1)
+      const size = parseFloat(parseAttrs(attrBody)['font-size'] ?? '')
+      if (own?.text && size) own.text.size = Math.max(own.text.size ?? 0, size * stack[stack.length - 1].m[0])
+      continue
+    }
     const attrs = parseAttrs(attrBody)
     const parent = stack[stack.length - 1]
+    if (name === 'text' && parent.tracked.length && !parent.skip) {
+      const own = parent.tracked.at(-1)
+      const [tx, ty] = apply(parent.m, parseFloat(attrs.x ?? '0'), parseFloat(attrs.y ?? '0'))
+      own.text ??= { x: tx, y: ty }
+    }
     if (name === 'g' || name === 'svg' || name === 'text') {
       const cls = (attrs.class ?? '').split(/\s+/)
       const skip = parent.skip || cls.includes('bounding-box')
@@ -201,13 +215,14 @@ export function extractBoxes(svg) {
   return {
     viewBox,
     elements: elements
-      .filter((e) => Number.isFinite(e.minX) || e.lines.length)
+      .filter((e) => Number.isFinite(e.minX) || e.lines.length || e.text)
       .map((e) => ({
         cls: e.cls,
         id: e.id,
         parent: e.parent,
         glyphs: e.glyphs,
         lines: e.lines,
+        text: e.text ?? null,
         box: { x: e.minX, y: e.minY, width: e.maxX - e.minX, height: e.maxY - e.minY },
         ref: e,
       })),

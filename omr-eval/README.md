@@ -52,6 +52,17 @@ Columns:
   spaces), regardless of pitch.
 - **pitch** — of the noteheads found, how many got the right pitch.
 - **≥95%** — pages read at 95 % or better.
+- **dur. / dots** — of the noteheads found, how many got the right duration
+  and dot count (where the truth has them: LilyPond pages have durations,
+  `verovio-rhythm` pages both).
+- **rhythm** — 1 − edit distance ÷ length over notes as pitch:duration:dots
+  and rests, on pages whose truth has complete rhythm (`verovio-rhythm`).
+- **bars** — measures whose durations add up to the time signature, as read
+  or after the recogniser's own correction.
+
+`data/verovio-rhythm/` is made from Verovio pages the detector never trained
+on: `node omr-train/gen/generate.mjs --from 900000 --count 30 --out DIR`, then
+`omr-eval/scripts/verovio-eval.py DIR omr-eval/data/verovio-rhythm`.
 
 ## Ground truth format
 

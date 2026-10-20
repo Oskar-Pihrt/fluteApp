@@ -13,18 +13,34 @@ sub-cell offset — CenterNet without boxes, since every symbol's size is fixed 
 the staff spacing anyway.
 
 Classes (`omr/targets.py`): filled, hollow and grace noteheads; sharp, flat,
-natural, double sharp, double flat; clef; barline; ottava start and end; and a
-marker on noteheads that continue a tie. Rests, text, dynamics, beams, slurs and
-the rest are not classes — they are what the network learns *not* to fire on.
+natural, double sharp, double flat; clef; barline; ottava start and end; a
+marker on noteheads that continue a tie — and, for rhythm, rests by duration,
+time signatures as whole shapes (2/4 … 12/8, C, ¢), repeat start and end,
+the corner of a first/second ending, segno, coda, and the D.C./D.S./Fine/To
+Coda texts as shapes. Dynamics, beams, slurs and the like are not classes —
+they are what the network learns *not* to fire on.
 
-Turning those detections into pitches (staff position, key signature,
-accidentals in force, ottava, ties) is ordinary code in `src/omr/assemble.ts`.
+Two more outputs are **attributes read at a peak**: a notehead's duration
+(whole … 32nd) and dots (0–2), for heads and rests. Reading them where the
+head is means the app never has to pair stems, flags, beams and dots with
+noteheads geometrically, and a staccato dot can't pass for an augmentation
+dot. They are trained with cross-entropy on the cells around each head only.
+
+Pages without rhythm truth (LilyPond, older Verovio pages) mask the rhythm
+classes out of the loss instead of teaching them as background; LilyPond's
+noteheads still teach durations (its `log`), but not dots.
+
+Turning those detections into music is ordinary code: pitches (staff
+position, key signature, accidentals in force, ottava, ties) in
+`src/omr/assemble.ts`, measures and durations in `src/omr/rhythm.ts`, which
+also checks each measure against its time signature and, when it doesn't add
+up, tries the network's runner-up durations and dots on one or two notes.
 
 ## Data
 
 | Source | Script | Notes |
 | --- | --- | --- |
-| Synthetic parts engraved by **Verovio** in five SMuFL fonts (Leipzig, Bravura, Leland, Petaluma, Gootville) | `gen/generate.mjs` | Random monophonic parts from `gen/melody.mjs`: beams of every density, rests, ties, slurs, ottava, grace notes, tuplets, dynamics, hairpins, text, fingerings, articulations, meter and key changes, repeats. Layout, staff size, spacing and line weights randomised per page. |
+| Synthetic parts engraved by **Verovio** in five SMuFL fonts (Leipzig, Bravura, Leland, Petaluma, Gootville) | `gen/generate.mjs --out data/verovio-rhythm` | Random monophonic parts from `gen/melody.mjs`: beams of every density, rests, ties, slurs, ottava, grace notes, tuplets, dynamics, hairpins, text, fingerings, articulations, meter and key changes, repeats, first/second endings, segno/coda and D.C./D.S. marks. Layout, staff size, spacing and line weights randomised per page. Truth includes every note's duration and dots, rests by duration, time signatures (read from their SMuFL digits), barline kinds and the marks. |
 | Real parts engraved by **LilyPond** (Mutopia `split: train`) | `../omr-eval/scripts/build-lilypond.mjs --split train` | A second engraver and font (Emmentaler), real music. |
 
 Training crops are augmented (`omr/dataset.py`) towards what the app really

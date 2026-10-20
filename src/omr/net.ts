@@ -47,8 +47,21 @@ export interface NetManifest {
   inputStaffSpace: number
   stride: number
   inputMultiple: number
-  outputs: { heat: string; offset: string }
+  /**
+   * Named output tensors. `dur` and `dots` (version 2) are per-cell
+   * attributes of the symbol at a peak: a note's duration and its dots.
+   */
+  outputs: { heat: string; offset: string; dur?: string; dots?: string }
+  /** Version 2: the duration classes of `dur`, in channel order. */
+  durations?: string[]
   ops: Op[]
+}
+
+export interface NetOutputs {
+  heat: Tensor
+  offset: Tensor
+  dur?: Tensor
+  dots?: Tensor
 }
 
 export interface Net {
@@ -292,8 +305,9 @@ export function runNet(
   net: Net,
   input: Tensor,
   onOp?: (op: Op, ms: number) => void,
-): { heat: Tensor; offset: Tensor } {
+): NetOutputs {
   const { ops, outputs } = net.manifest
+  const wanted = new Set(Object.values(outputs))
   const values = new Map<string, Tensor>([['input', input]])
   // Free each intermediate after its last use; peak memory is what limits a phone.
   const lastUse = new Map<string, number>()
@@ -312,8 +326,13 @@ export function runNet(
     values.set(op.out, out)
     onOp?.(op, performance.now() - started)
     for (const [name, last] of lastUse) {
-      if (last === index && name !== outputs.heat && name !== outputs.offset) values.delete(name)
+      if (last === index && !wanted.has(name)) values.delete(name)
     }
   })
-  return { heat: values.get(outputs.heat)!, offset: values.get(outputs.offset)! }
+  return {
+    heat: values.get(outputs.heat)!,
+    offset: values.get(outputs.offset)!,
+    ...(outputs.dur ? { dur: values.get(outputs.dur) } : {}),
+    ...(outputs.dots ? { dots: values.get(outputs.dots) } : {}),
+  }
 }

@@ -31,6 +31,13 @@ mkdirSync(out, { recursive: true })
 const FONTS = ['Leipzig', 'Bravura', 'Leland', 'Petaluma', 'Gootville']
 /** SMuFL accidental code points → printed accidental. */
 const ACCIDENTALS = { E260: 'flat', E261: 'natural', E262: 'sharp', E263: 'dsharp', E264: 'dflat', E266: 'dsharp', E267: 'dflat' }
+/** SMuFL rest code points → the rest's duration. */
+const RESTS = { E4E3: 'whole', E4E4: 'half', E4E5: 'quarter', E4E6: 'eighth', E4E7: '16th', E4E8: '32nd' }
+/** SMuFL time signature digits, and the common/cut symbols. */
+const TIME_DIGITS = { E080: '0', E081: '1', E082: '2', E083: '3', E084: '4', E085: '5', E086: '6', E087: '7', E088: '8', E089: '9' }
+const TIME_SYMBOLS = { E08A: 'common', E08B: 'cut' }
+/** MEI @dur → duration name. */
+const DURATIONS = { 1: 'whole', 2: 'half', 4: 'quarter', 8: 'eighth', 16: '16th', 32: '32nd' }
 
 const toolkit = new VerovioToolkit(await createVerovioModule())
 // Verovio is chatty about recoverable encoding quirks; they are not errors here.
@@ -38,7 +45,7 @@ console.warn = () => {}
 
 for (let seed = from; seed < from + count; seed++) {
   const r = rng(seed * 7919 + 13)
-  const { mei, notes } = generatePiece(seed)
+  const { mei, notes, measureTruth, marks } = generatePiece(seed)
   const truthById = Object.fromEntries(notes.map((n) => [n.id, n]))
 
   const letter = r.chance(0.3)
@@ -108,7 +115,46 @@ for (let seed = from; seed < from + count; seed++) {
       if (!truth) continue
       const b = px(e.box)
       // Noteheads are stored by centre, like the eval truth; symbols by top-left box.
-      noteheads.push({ x: b.x + b.width / 2, y: b.y + b.height / 2, width: b.width, height: b.height, midi: truth.midi, grace: truth.grace, hollow: truth.hollow, tied: truth.tied, chordLow: !!truth.chordLow })
+      noteheads.push({
+        x: b.x + b.width / 2,
+        y: b.y + b.height / 2,
+        width: b.width,
+        height: b.height,
+        midi: truth.midi,
+        grace: truth.grace,
+        hollow: truth.hollow,
+        tied: truth.tied,
+        chordLow: !!truth.chordLow,
+        ...(truth.dur ? { dur: DURATIONS[truth.dur], dots: truth.dots ?? 0 } : {}),
+      })
+    }
+
+    // Augmentation dots, counted per note or rest they belong to.
+    const dotCount = new Map()
+    for (const e of elements) {
+      if (e.cls !== 'dots' || !e.parent) continue
+      dotCount.set(e.parent, (dotCount.get(e.parent) ?? 0) + e.glyphs.filter((g) => g === 'E1E7').length)
+    }
+    // Barlines by the measure they close (or open, for a repeat start).
+    const barlinesOf = new Map()
+    for (const e of elements) {
+      if (e.cls !== 'barLine' || !e.parent) continue
+      const list = barlinesOf.get(e.parent) ?? []
+      list.push(e)
+      barlinesOf.set(e.parent, list)
+    }
+    const barlineKind = (e) => {
+      const measure = parentOf(e)
+      const truth = measure?.id ? measureTruth[measure.id] : null
+      if (!truth) return 'normal'
+      const list = (barlinesOf.get(e.parent) ?? []).sort((a, b) => a.box.x - b.box.x)
+      const first = list[0] === e && list.length > 1
+      if (truth.left === 'rptstart' && first) return 'repeat_start'
+      if (truth.right === 'rptend') return 'repeat_end'
+      if (truth.right === 'rptboth') return 'repeat_both'
+      if (truth.right === 'end') return 'final'
+      if (truth.right === 'dbl') return 'double'
+      return 'normal'
     }
 
     const symbols = []
@@ -116,7 +162,26 @@ for (let seed = from; seed < from + count; seed++) {
       if (e.cls === 'accid' || e.cls === 'keyAccid') {
         const kind = e.glyphs.map((g) => ACCIDENTALS[g]).find(Boolean)
         if (kind) symbols.push({ cls: kind, key: e.cls === 'keyAccid', ...px(e.box) })
-      } else if (['clef', 'barLine', 'octave', 'rest', 'mRest', 'multiRest', 'tie', 'slur', 'meterSig', 'dynam', 'fing', 'trill', 'artic', 'dots', 'beam'].includes(e.cls)) {
+      } else if (e.cls === 'rest' || e.cls === 'mRest') {
+        const kind = e.glyphs.map((g) => RESTS[g]).find(Boolean)
+        symbols.push({ cls: e.cls, ...(kind ? { kind, dots: dotCount.get(e.ref) ?? 0 } : {}), ...px(e.box) })
+      } else if (e.cls === 'meterSig') {
+        const symbol = e.glyphs.map((g) => TIME_SYMBOLS[g]).find(Boolean)
+        const digits = e.glyphs.map((g) => TIME_DIGITS[g] ?? '').join('')
+        symbols.push({ cls: e.cls, kind: symbol ?? digits, ...px(e.box) })
+      } else if (e.cls === 'barLine') {
+        symbols.push({ cls: e.cls, kind: barlineKind(e), ...px(e.box) })
+      } else if (e.cls === 'ending') {
+        symbols.push({ cls: 'volta', ...px(e.box) })
+      } else if (e.cls === 'repeatMark' && e.id && marks[e.id]) {
+        symbols.push({ cls: 'mark', kind: marks[e.id], ...px(e.box) })
+      } else if (e.cls === 'dir' && e.id && marks[e.id] && e.text?.size) {
+        // Text has no outline: a box estimated from where it starts, its size
+        // and the string's length.
+        const string = { dc: 'D.C.', dc_al_fine: 'D.C. al Fine', dc_al_coda: 'D.C. al Coda', ds: 'D.S.', ds_al_fine: 'D.S. al Fine', ds_al_coda: 'D.S. al Coda', fine: 'Fine', to_coda: 'To Coda' }[marks[e.id]] ?? ''
+        const size = e.text.size
+        symbols.push({ cls: 'mark', kind: marks[e.id], ...px({ x: e.text.x, y: e.text.y - size * 0.75, width: size * 0.5 * string.length, height: size }) })
+      } else if (['clef', 'octave', 'multiRest', 'tie', 'slur', 'dynam', 'fing', 'trill', 'artic', 'dots', 'beam'].includes(e.cls)) {
         symbols.push({ cls: e.cls, ...px(e.box) })
       }
     }

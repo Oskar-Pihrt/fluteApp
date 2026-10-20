@@ -51,6 +51,10 @@ export interface TruthNotehead {
   log: number
   grace: boolean
   tied: boolean
+  /** Rhythm eval pages: the duration by name, and the dots. */
+  dur?: string
+  dots?: number
+  chordLow?: boolean
 }
 
 export interface PageTruth {
@@ -61,6 +65,36 @@ export interface PageTruth {
   height: number
   staves: { lines: number[]; x0: number; x1: number }[]
   noteheads: TruthNotehead[]
+  /** Rhythm eval pages: the rests too, and a flag that durations are complete. */
+  rests?: { x: number; y: number; staffIndex: number; kind: string; measure?: boolean; dots?: number }[]
+  rhythm?: boolean
+}
+
+const LOG_NAMES = ['whole', 'half', 'quarter', 'eighth', '16th', '32nd']
+
+/** A truth notehead's duration name, from `dur` or LilyPond's `log`. */
+export function truthDuration(head: TruthNotehead): string | null {
+  if (head.dur) return head.dur
+  return LOG_NAMES[head.log] ?? null
+}
+
+/**
+ * The rhythm a player reads, as tokens: per staff, left to right, a note as
+ * pitch:duration:dots and a rest as `r` (rests are compared by presence —
+ * a whole-measure rest is drawn the same whatever the measure's length).
+ */
+export function truthRhythm(truth: PageTruth): string[] {
+  const out: string[] = []
+  truth.staves.forEach((_, staffIndex) => {
+    const items = [
+      ...truth.noteheads
+        .filter((n) => n.staffIndex === staffIndex && !n.grace && !n.chordLow && n.dur)
+        .map((n) => ({ x: n.x, token: `${n.midi}:${n.dur}:${n.dots ?? 0}` })),
+      ...(truth.rests ?? []).filter((r) => r.staffIndex === staffIndex).map((r) => ({ x: r.x, token: 'r' })),
+    ].sort((a, b) => a.x - b.x)
+    out.push(...items.map((i) => i.token))
+  })
+  return out
 }
 
 /**

@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .targets import CLASSES
+from .targets import CLASSES, DURATIONS, MAX_DOTS
 
 SEPARABLE = True
 
@@ -70,6 +70,9 @@ class Detector(nn.Module):
         self.head = DWSep(c(32), c(32))
         self.heat = nn.Conv2d(c(32), len(CLASSES), 1)
         self.offset = nn.Conv2d(c(32), 2, 1)
+        # Attributes of the symbol at a peak: a note's duration, and its dots.
+        self.dur = nn.Conv2d(c(32), len(DURATIONS), 1)
+        self.dots = nn.Conv2d(c(32), MAX_DOTS + 1, 1)
         nn.init.constant_(self.heat.bias, -2.19)  # prior ≈ 0.1, the CenterNet init
 
     def forward(self, x):
@@ -80,18 +83,30 @@ class Detector(nn.Module):
         d8 = self.dec8(torch.cat([up(s16), s8], 1))
         d4 = self.dec4(torch.cat([up(d8), s4], 1))
         h = self.head(d4)
-        return self.heat(h), self.offset(h)
+        return self.heat(h), self.offset(h), self.dur(h), self.dots(h)
 
 
-def focal_loss(logits, target):
-    """CenterNet's penalty-reduced focal loss over heatmaps."""
+def focal_loss(logits, target, class_mask=None):
+    """CenterNet's penalty-reduced focal loss over heatmaps.
+
+    `class_mask` (N, C) leaves out classes a sample's source has no truth
+    for — they are neither positives nor background there.
+    """
     pred = torch.sigmoid(logits).clamp(1e-4, 1 - 1e-4)
-    pos = target.eq(1).float()
-    neg = 1 - pos
+    weight = class_mask[:, :, None, None] if class_mask is not None else 1.0
+    pos = target.eq(1).float() * weight
+    neg = (1 - target.eq(1).float()) * weight
     pos_loss = torch.log(pred) * (1 - pred) ** 2 * pos
     neg_loss = torch.log(1 - pred) * pred**2 * (1 - target) ** 4 * neg
     num_pos = pos.sum().clamp(min=1)
     return -(pos_loss.sum() + neg_loss.sum()) / num_pos
+
+
+def attribute_loss(logits, target):
+    """Cross-entropy over the labelled cells only (−1 is unlabelled)."""
+    if not (target >= 0).any():
+        return logits.sum() * 0
+    return F.cross_entropy(logits, target, ignore_index=-1)
 
 
 def offset_loss(pred, target, mask):
