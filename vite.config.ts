@@ -24,15 +24,15 @@ export default defineConfig({
           {
             urlPattern: /\/assets\/instrument-[^/]+\.js$/,
             handler: 'CacheFirst',
-            options: { cacheName: 'fluteapp-instruments' },
+            options: { cacheName: 'timbremap-instruments' },
           },
         ],
       },
       manifest: {
-        name: 'FluteApp — transverse flute fingerings',
-        short_name: 'FluteApp',
+        name: 'TimbreMap — fingerings for wind instruments',
+        short_name: 'TimbreMap',
         description:
-          'Fingering lookup, note library and sheet music practice for transverse flute players.',
+          'Fingering lookup, note library, sheet music and ear training for wind instrument players.',
         theme_color: '#191A19',
         background_color: '#191A19',
         display: 'standalone',

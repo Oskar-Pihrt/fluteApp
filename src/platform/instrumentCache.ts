@@ -13,7 +13,7 @@ import type { useSettingsStore } from '@/stores/settings'
  */
 
 /** Must match `runtimeCaching[].options.cacheName` in `vite.config.ts`. */
-export const INSTRUMENT_CACHE = 'fluteapp-instruments'
+export const INSTRUMENT_CACHE = 'timbremap-instruments'
 
 const CHUNK = /\/instrument-([A-Za-z0-9]+)-[^/]*\.js$/
 

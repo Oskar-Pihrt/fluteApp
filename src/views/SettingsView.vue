@@ -21,7 +21,7 @@ async function exportBackup() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `fluteapp-backup-${new Date().toISOString().slice(0, 10)}.json`
+    link.download = `timbremap-backup-${new Date().toISOString().slice(0, 10)}.json`
     link.click()
     URL.revokeObjectURL(url)
     status.value = { kind: 'ok', message: 'Backup downloaded.' }

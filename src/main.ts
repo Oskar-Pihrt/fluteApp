@@ -8,6 +8,8 @@ import './style.css'
 import App from './App.vue'
 import { router } from './router'
 import { setupNativePlatform } from './platform/native'
+// Imported early: the browser offers installation only once, at load.
+import './platform/install'
 import { keepInstrumentsCached } from './platform/instrumentCache'
 import { useSettingsStore } from './stores/settings'
 

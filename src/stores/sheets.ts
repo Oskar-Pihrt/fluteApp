@@ -134,6 +134,9 @@ export const useSheetsStore = defineStore('sheets', () => {
    *
    * Version 3 carries each sheet's `instrument`. Older files have none, which
    * reads as the flute — the only instrument they could have been made for.
+   *
+   * The format id predates the TimbreMap name and stays, so every backup
+   * ever exported still imports.
    */
   interface Backup {
     format: 'fluteapp-backup'
@@ -178,7 +181,7 @@ export const useSheetsStore = defineStore('sheets', () => {
   async function importBackup(file: Blob): Promise<number> {
     const parsed = JSON.parse(await file.text()) as Backup
     if (parsed?.format !== 'fluteapp-backup') {
-      throw new Error('That file is not a FluteApp backup.')
+      throw new Error('That file is not a TimbreMap backup.')
     }
 
     let added = 0

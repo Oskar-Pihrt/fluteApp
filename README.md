@@ -1,13 +1,18 @@
-# FluteApp
+# TimbreMap
 
-A reference and practice tool for transverse (Boehm-system) flute players. One
-codebase, three targets: mobile web, desktop web, and a native Android app.
+A fingering reference and practice tool for wind instrument players — flute
+and saxophones today, more on the way. One codebase, three targets: mobile web,
+desktop web, and a native Android app.
+
+Formerly FluteApp. Storage keys, the IndexedDB name, the backup format id and
+the Android `appId` keep the old name on purpose, so existing installs keep
+their settings and sheets.
 
 ## What it does
 
 1. **Fingering → note.** Tap the keys you hold down and see every note that
-   fingering produces. The flute's first two octaves share fingerings, so a
-   match usually reports two notes — both are shown, not just one.
+   fingering produces. The first two octaves usually share fingerings, so a
+   match often reports two notes — both are shown, not just one.
 2. **Note library.** Browse the whole range and see all documented ways to play
    each note: primary, alternate, and trill fingerings.
 3. **Sheet music.** Photograph or upload a piece (or import MusicXML), detect or
@@ -64,8 +69,10 @@ builds to its own `assets/instrument-<family>-<hash>.js` chunk and is loaded
 with `loadInstrument(id)`; after that, `getInstrument(id)` returns it
 synchronously. The app waits for the active instrument before it mounts.
 
-A new player picks their instruments on first launch; the switch at the top
-lists only those, and Setup changes the list. The installed PWA precaches the
+A new player gets a short welcome (what each tab does, how to install the app)
+and picks their instruments (`src/views/WelcomeView.vue`; the logo is a
+placeholder in `src/components/AppLogo.vue`). The switch at the top lists only
+those, and Setup changes the list. The installed PWA precaches the
 shell but **not** the instrument chunks: the service worker caches each chunk
 the first time it is fetched, `src/platform/instrumentCache.ts` fetches every
 chosen instrument (so it works offline from then on) and deletes the chunks of

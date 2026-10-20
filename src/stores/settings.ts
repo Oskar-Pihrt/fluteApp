@@ -13,6 +13,7 @@ import {
   loadInstrument,
 } from '@/instruments'
 
+// Named before the app became TimbreMap; kept so saved settings carry over.
 const STORAGE_KEY = 'fluteapp.settings.v1'
 
 export interface PersistedSettings {

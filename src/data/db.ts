@@ -64,6 +64,8 @@ class FluteDatabase extends Dexie {
   sheetNotes!: EntityTable<SheetNote, 'id'>
 
   constructor() {
+    // Named before the app became TimbreMap; renaming would orphan every
+    // saved sheet.
     super('fluteapp')
     this.version(1).stores({
       sheets: 'id, createdAt, updatedAt, title',
