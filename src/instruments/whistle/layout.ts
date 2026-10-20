@@ -21,5 +21,5 @@ export const WHISTLE_CHART: ChartLayout = {
   pixelWidth: { sm: 52, md: 74, lg: 120 },
   drawings: DRAWINGS,
   decorations: [{ s: 'arm', x1: 51, y1: 220, x2: 89, y2: 220 }],
-  matchAnchor: { x: 125, y: 120 },
+  matchAnchor: { x: 140, y: 120 },
 }

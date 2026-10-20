@@ -25,7 +25,8 @@ export const VALVE_CHART: ChartLayout = {
   height: 300,
   pixelWidth: { sm: 52, md: 74, lg: 120 },
   drawings: VALVES,
-  matchAnchor: { x: 128, y: 136 },
+  // In the margin right of the narrow column, where a long list of partials fits.
+  matchAnchor: { x: 185, y: 150 },
 }
 
 const STOP = (n: number) => 44 + (n - 1) * 46
@@ -45,5 +46,5 @@ export const SLIDE_CHART: ChartLayout = {
   drawings: SLIDE,
   // The slide's rail, from the bell section down past seventh position.
   decorations: [{ s: 'arm', x1: 80, y1: 20, x2: 80, y2: 340 }],
-  matchAnchor: { x: 128, y: 180 },
+  matchAnchor: { x: 185, y: 180 },
 }

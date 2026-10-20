@@ -18,17 +18,31 @@ const settings = useSettingsStore()
 const visible = computed(() =>
   store.sheets.filter((sheet) => sheetInstrument(sheet) === settings.instrumentId),
 )
-const hiddenCount = computed(() => store.sheets.length - visible.value.length)
-/** Nouns of the instruments the hidden sheets belong to, e.g. "flute and tenor sax". */
-const hiddenInstruments = computed(() => {
-  const ids = new Set(
-    store.sheets
-      .map(sheetInstrument)
-      .filter((id) => id !== settings.instrumentId),
-  )
-  const nouns = (Object.keys(CATALOG) as InstrumentId[]).filter((id) => ids.has(id)).map((id) => CATALOG[id].noun)
-  return nouns.length > 1 ? `${nouns.slice(0, -1).join(', ')} and ${nouns[nouns.length - 1]}` : nouns[0] ?? ''
+/**
+ * Sheets made for other instruments, counted per instrument — each a button
+ * that switches there, adding the instrument to the switch if needed.
+ */
+const hidden = computed(() => {
+  const counts = new Map<InstrumentId, number>()
+  for (const sheet of store.sheets) {
+    const id = sheetInstrument(sheet)
+    if (id !== settings.instrumentId) counts.set(id, (counts.get(id) ?? 0) + 1)
+  }
+  return (Object.keys(CATALOG) as InstrumentId[])
+    .filter((id) => counts.has(id))
+    .map((id) => ({ id, count: counts.get(id)!, name: CATALOG[id].name }))
 })
+const switchFailed = ref(false)
+
+async function showSheetsFor(id: InstrumentId) {
+  switchFailed.value = false
+  try {
+    await settings.selectInstrument(id)
+    await settings.setVisible(id, true)
+  } catch {
+    switchFailed.value = true
+  }
+}
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const busy = ref(false)
@@ -239,10 +253,22 @@ function formatDate(timestamp: number): string {
       </li>
     </ul>
 
-    <p v-if="hiddenCount" class="text-center text-xs text-ink-400">
-      {{ hiddenCount }} {{ hiddenCount === 1 ? 'sheet' : 'sheets' }} for the
-      {{ hiddenInstruments }} hidden — switch instrument to see
-      {{ hiddenCount === 1 ? 'it' : 'them' }}.
-    </p>
+    <div v-if="hidden.length" class="space-y-2 text-center">
+      <p class="text-xs text-ink-400">Sheets for your other instruments:</p>
+      <div class="flex flex-wrap justify-center gap-2">
+        <button
+          v-for="entry in hidden"
+          :key="entry.id"
+          type="button"
+          class="rounded-lg border border-ink-700 px-3 py-1.5 text-xs text-ink-200 transition-colors hover:border-ink-400"
+          @click="showSheetsFor(entry.id)"
+        >
+          {{ entry.name }} · {{ entry.count }}
+        </button>
+      </div>
+      <p v-if="switchFailed" role="alert" class="text-xs text-red-300">
+        Couldn’t download that instrument — you seem to be offline.
+      </p>
+    </div>
   </div>
 </template>
