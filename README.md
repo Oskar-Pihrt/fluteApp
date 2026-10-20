@@ -3,8 +3,9 @@
 A fingering reference and practice tool for wind instrument players — the
 flute family (flute, piccolo, alto and bass flute), the saxophones (sopranino
 to bass), Boehm and Oehler clarinets (E♭, B♭, A, plus alto, bass and basset
-horn on Boehm) and the oboe family (oboe, oboe d’amore, English horn) today,
-more on the way. One codebase, three targets: mobile web,
+horn on Boehm), the oboe family (oboe, oboe d’amore, English horn),
+recorders (sopranino to tenor, baroque and German fingering) and tin whistles
+(high D to low D) today, brass on the way. One codebase, three targets: mobile web,
 desktop web, and a native Android app.
 
 Formerly FluteApp. Storage keys, the IndexedDB name, the backup format id and
@@ -106,14 +107,17 @@ be checked against a printed chart without decoding it first:
 
 Within a hand group, each position is one character: its own digit (finger
 down), `-` (finger off), `0` (ring depressed, tone hole left open — open-hole
-flutes) or `h` (hole half covered). Groups can be longer than three, and
+flutes) or `h` (hole half covered — on a recorder's double hole, only its
+small hole). A recorder's pinched thumb is the thumb token `t`. Holes that can
+be half covered are marked `partial` on the key: the chart cycles them open →
+closed → half, and the lookup tells the three apart. Groups can be longer than three, and
 instruments without a thumb key leave the thumb token out. `parseFingeringCode`
 validates every code and throws on a typo, including a digit in the wrong
 position.
 
 ### The fingering data
 
-Clarinet and oboe tables are converted from The Woodwind Fingering Guide's
+Clarinet, oboe, recorder and whistle tables are converted from The Woodwind Fingering Guide's
 charts by `scripts/wfg/` (see its README); the flute's was transcribed by hand
 from the same guide; the saxophone's was written from general knowledge and
 carries *Needs checking* notes.

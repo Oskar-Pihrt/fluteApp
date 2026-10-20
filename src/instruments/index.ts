@@ -21,14 +21,44 @@ interface LoadedModule {
   url: string
 }
 
-const DATA_MODULES: Record<DataModuleId, () => Promise<LoadedModule>> = {
-  flute: () => import('./flute/data').then((m) => ({ data: m.FLUTE_DATA, url: m.MODULE_URL })),
-  saxophone: () => import('./saxophone/data').then((m) => ({ data: m.SAX_DATA, url: m.MODULE_URL })),
-  clarinetBoehm: () =>
-    import('./clarinetBoehm/data').then((m) => ({ data: m.CLARINET_BOEHM_DATA, url: m.MODULE_URL })),
-  clarinetOehler: () =>
-    import('./clarinetOehler/data').then((m) => ({ data: m.CLARINET_OEHLER_DATA, url: m.MODULE_URL })),
-  oboe: () => import('./oboe/data').then((m) => ({ data: m.OBOE_DATA, url: m.MODULE_URL })),
+/**
+ * How each data module is loaded, and the chunk it lives in — named after its
+ * folder (`vite.config.ts`). Variants of one family (baroque and German
+ * recorders) share a chunk.
+ */
+const DATA_MODULES: Record<DataModuleId, { chunk: string; load: () => Promise<LoadedModule> }> = {
+  flute: { chunk: 'flute', load: () => import('./flute/data').then((m) => ({ data: m.FLUTE_DATA, url: m.MODULE_URL })) },
+  saxophone: {
+    chunk: 'saxophone',
+    load: () => import('./saxophone/data').then((m) => ({ data: m.SAX_DATA, url: m.MODULE_URL })),
+  },
+  clarinetBoehm: {
+    chunk: 'clarinetBoehm',
+    load: () => import('./clarinetBoehm/data').then((m) => ({ data: m.CLARINET_BOEHM_DATA, url: m.MODULE_URL })),
+  },
+  clarinetOehler: {
+    chunk: 'clarinetOehler',
+    load: () =>
+      import('./clarinetOehler/data').then((m) => ({ data: m.CLARINET_OEHLER_DATA, url: m.MODULE_URL })),
+  },
+  oboe: { chunk: 'oboe', load: () => import('./oboe/data').then((m) => ({ data: m.OBOE_DATA, url: m.MODULE_URL })) },
+  recorderBaroque: {
+    chunk: 'recorder',
+    load: () => import('./recorder/data').then((m) => ({ data: m.RECORDER_BAROQUE_DATA, url: m.MODULE_URL })),
+  },
+  recorderGerman: {
+    chunk: 'recorder',
+    load: () => import('./recorder/data').then((m) => ({ data: m.RECORDER_GERMAN_DATA, url: m.MODULE_URL })),
+  },
+  whistle: {
+    chunk: 'whistle',
+    load: () => import('./whistle/data').then((m) => ({ data: m.WHISTLE_DATA, url: m.MODULE_URL })),
+  },
+}
+
+/** The chunk an instrument's data is downloaded in. */
+export function chunkOf(id: InstrumentId): string {
+  return DATA_MODULES[getMeta(id).dataModule].chunk
 }
 
 export type LoadStatus = 'loading' | 'ready' | 'error'
@@ -50,7 +80,9 @@ function build(meta: InstrumentMeta, data: InstrumentData): Instrument {
   const { specs, parse, ...rest } = data
   const omit = new Set(meta.omitKeys ?? [])
   const [low, high] = (meta.writtenRange ?? []).map((note) => Note.midi(note)!)
+  const shift = meta.fingeringShift ?? 0
   const fingerings = specs
+    .map((spec) => (shift ? { ...spec, note: Note.fromMidiSharps(Note.midi(spec.note)! + shift) } : spec))
     .map((spec, i) =>
       resolveFingering(spec, i, {
         id: meta.id,
@@ -84,7 +116,7 @@ function build(meta: InstrumentMeta, data: InstrumentData): Instrument {
 function loadModule(id: DataModuleId): Promise<LoadedModule> {
   let pending = modules.get(id)
   if (!pending) {
-    pending = DATA_MODULES[id]()
+    pending = DATA_MODULES[id].load()
     // A failed fetch (offline, first use) must not stick: try again next time.
     pending.catch(() => modules.delete(id))
     modules.set(id, pending)
@@ -109,12 +141,12 @@ export async function loadInstrument(id: InstrumentId): Promise<Instrument> {
   }
 }
 
-/** URL of each data module's chunk that this version of the app loaded. */
-export async function loadedModuleUrls(): Promise<Map<DataModuleId, string>> {
-  const urls = new Map<DataModuleId, string>()
+/** URL of each chunk this version of the app loaded, by chunk name. */
+export async function loadedChunkUrls(): Promise<Map<string, string>> {
+  const urls = new Map<string, string>()
   for (const [id, pending] of modules) {
     try {
-      urls.set(id, (await pending).url)
+      urls.set(DATA_MODULES[id].chunk, (await pending).url)
     } catch {
       // Not downloaded; nothing to keep.
     }

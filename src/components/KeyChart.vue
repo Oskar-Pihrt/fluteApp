@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useId } from 'vue'
 import { type InstrumentKey, type KeyId, keysInGroup, sortKeys } from '@/domain/keys'
-import type { Instrument } from '@/instruments'
+import type { Instrument, KeyDrawing } from '@/instruments'
 import { useSettingsStore } from '@/stores/settings'
 
 /**
@@ -26,7 +26,10 @@ const props = withDefaults(
   { partial: () => [], interactive: false, unavailable: () => [], size: 'md', instrument: undefined },
 )
 
-const emit = defineEmits<{ 'update:keys': [KeyId[]] }>()
+const emit = defineEmits<{ 'update:keys': [KeyId[]]; 'update:partial': [KeyId[]] }>()
+
+/** Per-chart id for the half-fill gradient, so two charts on a page don't share one. */
+const halfFillId = `half-fill-${useId()}`
 
 const settings = useSettingsStore()
 const instrument = computed(() => props.instrument ?? settings.instrument)
@@ -58,18 +61,44 @@ function stateOf(key: KeyId): State {
   return 'open'
 }
 
+/**
+ * Tap a key: closed if open, open if closed. A hole that can be half covered
+ * cycles open → closed → half instead.
+ */
 function toggle(key: InstrumentKey) {
   if (!props.interactive || unavailableSet.value.has(key.id)) return
   const next = new Set(props.keys)
+  const half = new Set(props.partial)
   if (next.has(key.id)) {
     next.delete(key.id)
+    if (key.partial) half.add(key.id)
+  } else if (half.has(key.id)) {
+    half.delete(key.id)
   } else {
     for (const group of exclusiveSets.value) {
       if (group.includes(key.id)) for (const other of group) next.delete(other)
     }
     next.add(key.id)
   }
-  emit('update:keys', sortKeys([...next], instrument.value.keyOrder))
+  const order = instrument.value.keyOrder
+  emit('update:keys', sortKeys([...next], order))
+  if (half.size !== partialSet.value.size || [...half].some((id) => !partialSet.value.has(id))) {
+    emit('update:partial', sortKeys([...half], order))
+  }
+}
+
+/**
+ * How one part of a key is filled: all of it when pressed; when partly
+ * closed, a vented ring stays filled (its open centre is drawn on top), a
+ * double hole fills only its `partialParts`, anything else fills half.
+ */
+function fillOf(key: KeyId, drawing: KeyDrawing, index: number): 'on' | 'half' | 'off' {
+  const state = stateOf(key)
+  if (state === 'pressed') return 'on'
+  if (state !== 'partial') return 'off'
+  if (drawing.ring) return 'on'
+  if (drawing.partialParts) return drawing.partialParts.includes(index) ? 'on' : 'off'
+  return 'half'
 }
 
 /**
@@ -101,6 +130,14 @@ function ariaLabel(key: InstrumentKey): string {
         : `${instrument.name} fingering diagram`
     "
   >
+    <!-- Half covered: the left half filled, with a hard edge. -->
+    <defs>
+      <linearGradient :id="halfFillId" x1="0" x2="1" y1="0" y2="0">
+        <stop offset="0.5" class="half-fill-on" />
+        <stop offset="0.5" class="half-fill-off" />
+      </linearGradient>
+    </defs>
+
     <template v-for="(part, index) in chart.decorations ?? []" :key="`d${index}`">
       <line
         v-if="part.s === 'arm'"
@@ -119,7 +156,15 @@ function ariaLabel(key: InstrumentKey): string {
       :class="`key--${stateOf(key.id)}`"
       :role="interactive ? 'button' : undefined"
       :tabindex="interactive && stateOf(key.id) !== 'unavailable' ? 0 : undefined"
-      :aria-pressed="interactive ? stateOf(key.id) === 'pressed' : undefined"
+      :aria-pressed="
+        interactive
+          ? stateOf(key.id) === 'pressed'
+            ? 'true'
+            : stateOf(key.id) === 'partial'
+              ? 'mixed'
+              : 'false'
+          : undefined
+      "
       :aria-label="ariaLabel(key)"
       @click="toggle(key)"
       @keydown.enter.prevent="toggle(key)"
@@ -134,6 +179,8 @@ function ariaLabel(key: InstrumentKey): string {
           :cy="part.cy"
           :r="part.r"
           class="key-shape"
+          :class="`key-shape--${fillOf(key.id, drawing, index)}`"
+          :style="fillOf(key.id, drawing, index) === 'half' ? { fill: `url(#${halfFillId})` } : undefined"
         />
         <rect
           v-else-if="part.s === 'rect'"
@@ -143,6 +190,8 @@ function ariaLabel(key: InstrumentKey): string {
           :height="part.h"
           :rx="part.rx"
           class="key-shape"
+          :class="`key-shape--${fillOf(key.id, drawing, index)}`"
+          :style="fillOf(key.id, drawing, index) === 'half' ? { fill: `url(#${halfFillId})` } : undefined"
         />
         <ellipse
           v-else-if="part.s === 'ellipse'"
@@ -152,8 +201,16 @@ function ariaLabel(key: InstrumentKey): string {
           :ry="part.ry"
           :transform="`rotate(${part.rotate} ${part.cx} ${part.cy})`"
           class="key-shape"
+          :class="`key-shape--${fillOf(key.id, drawing, index)}`"
+          :style="fillOf(key.id, drawing, index) === 'half' ? { fill: `url(#${halfFillId})` } : undefined"
         />
-        <path v-else-if="part.s === 'path'" :d="part.d" class="key-shape" />
+        <path
+          v-else-if="part.s === 'path'"
+          :d="part.d"
+          class="key-shape"
+          :class="`key-shape--${fillOf(key.id, drawing, index)}`"
+          :style="fillOf(key.id, drawing, index) === 'half' ? { fill: `url(#${halfFillId})` } : undefined"
+        />
         <line
           v-else
           :x1="part.x1"
@@ -243,10 +300,21 @@ function ariaLabel(key: InstrumentKey): string {
 }
 
 /* ── Pressed ──────────────────────────────────────────────────────────── */
-.key--pressed .key-shape,
-.key--partial .key-shape {
+.key-shape--on {
   fill: var(--color-accent-400);
   stroke: var(--color-accent-300);
+}
+
+.key-shape--half {
+  stroke: var(--color-accent-300);
+}
+
+.half-fill-on {
+  stop-color: var(--color-accent-400);
+}
+
+.half-fill-off {
+  stop-color: var(--color-ink-900);
 }
 
 .key--pressed .key-arm,
