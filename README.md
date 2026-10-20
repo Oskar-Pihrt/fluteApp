@@ -23,9 +23,10 @@ their settings and sheets.
 2. **Note library.** Browse the whole range and see all documented ways to play
    each note: primary, alternate, and trill fingerings.
 3. **Sheet music.** Photograph or upload a piece (or import MusicXML), detect or
-   note down what to play, and get the fingering for every note. A piece can be
-   rewritten for another instrument at the same sounding pitch. Saved on your
-   device for later.
+   note down what to play, and get the fingering for every note. The piece is
+   engraved as real sheet music — pitches only, or with rhythm — next to the
+   photo it came from. A piece can be rewritten for another instrument at the
+   same sounding pitch. Saved on your device for later.
 
 Everything works offline. Nothing is uploaded anywhere, and there are no
 accounts — which means backups are your responsibility, so **Setup → Export
@@ -212,12 +213,38 @@ How it is built and trained is in [omr-train/](omr-train/README.md);
 `npm run omr:improve` runs one unattended round of fresh data, fine-tuning and
 evaluation, and only replaces the shipped model if it scores better.
 
+## The score
+
+Every sheet is a score (`src/score/model.ts`): measures of notes and rests,
+with time and key signatures, repeats, first and second endings and
+D.C./D.S./Fine marks. It has two modes — **pitches only** (the order of
+notes; durations need not exist and aren't shown) and **with rhythm** (every
+note has a duration and measures are checked against the time signature).
+Switching keeps everything: durations hidden in pitches mode come back
+unchanged; a score that never had any gets quarters, regrouped by the time
+signature (`src/score/ops.ts`).
+
+It is engraved with VexFlow and its Bravura font (`src/score/render.ts`,
+`src/components/ScoreView.vue`), loaded with the first sheet opened and
+precached for offline use. Measures are packed into systems that fill the
+width, like a printed page.
+
+Scores live in their own IndexedDB table (`scores`, schema version 2). The
+upgrade turned every older sheet's note list into a pitches-mode score, its
+dividers into measures; the old `sheetNotes` table is left untouched. Backups
+are version 4 and carry the score; older backups still import.
+
+MusicXML import reads the whole part — durations, rests, ties, time and key
+changes, repeats, endings, D.C./D.S. and tempo. Detection from a photo still
+reads pitches only, into a pitches-mode score whose measures follow the
+page's barlines.
+
 ## Not built yet
 
-Note **durations** are neither detected nor stored — the app is a fingering
-reference, not a score editor. Repeats, `D.C.` and voltas are ignored, so a piece
-with them reads in printed order rather than playing order. Chords are detected
-but reduced to their top note, with a warning.
+Durations are not yet **detected** from a photo, the score can't be edited
+note by note beyond the quick fixes, and playback is still evenly spaced
+notes — all planned. Chords are detected but reduced to their top note, with a
+warning.
 
 ## Logo and icons
 

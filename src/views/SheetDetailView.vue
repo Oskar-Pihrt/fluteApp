@@ -6,13 +6,14 @@ import KeyChart from '@/components/KeyChart.vue'
 import NoteBadge from '@/components/NoteBadge.vue'
 import NotePicker from '@/components/NotePicker.vue'
 import OmrDebugView from '@/components/OmrDebugView.vue'
+import ScoreView from '@/components/ScoreView.vue'
 import SheetOverlay from '@/components/SheetOverlay.vue'
 import StaffPosition from '@/components/StaffPosition.vue'
 import type { Sheet } from '@/data/db'
 import { diatonicAtStaffPosition } from '@/domain/staff'
 import { lettersAlteredBy } from '@/omr/pitch'
 import { useRecogniser } from '@/omr/useRecogniser'
-import type { Box, KeySignature, OmrWarning } from '@/omr/types'
+import type { KeySignature, OmrWarning } from '@/omr/types'
 import { createBlobUrl, revokeBlobUrl } from '@/data/images'
 import { playNote, playSequence } from '@/domain/audio'
 import { type Fingering, prettyCode } from '@/domain/fingering'
@@ -21,10 +22,19 @@ import { CATALOG, type InstrumentId, loadInstrument } from '@/instruments'
 import { Note } from 'tonal'
 import { useSettingsStore } from '@/stores/settings'
 import { sheetInstrument, useSheetsStore } from '@/stores/sheets'
+import { emptyScore, eventId, type NoteEvent, type Score, toPlain } from '@/score/model'
+import {
+  fromSequence,
+  notesOf,
+  type SequenceItem,
+  toPitchesMode,
+  toRhythmMode,
+  toSequence,
+} from '@/score/ops'
 
 /**
- * Feature 3, detail — the uploaded image plus the sequence of notes to play,
- * each with its fingering.
+ * Feature 3, detail — the sheet as engraved music (or the photo it came
+ * from), every note with its fingering.
  *
  * Notes are edited in a local draft and written back on save, so tapping
  * through a long piece doesn't hit IndexedDB on every keystroke.
@@ -34,18 +44,6 @@ const route = useRoute()
 const router = useRouter()
 const store = useSheetsStore()
 const settings = useSettingsStore()
-
-interface DraftNote {
-  note: string
-  chosenFingeringId?: string
-  /** Where on the page this note was found, normalised 0–1. Detected notes only. */
-  bbox?: Box
-  source?: 'manual' | 'detected'
-  /** A divider follows this note in the strip. */
-  barAfter?: boolean
-  /** Recogniser confidence, 0–1. Transient — not persisted, only used for review. */
-  confidence?: number
-}
 
 const sheet = ref<Sheet | null>(null)
 
@@ -64,11 +62,16 @@ const convertOptions = computed(() => {
   const wanted = new Set<InstrumentId>([...settings.visibleInstruments, own])
   return (Object.keys(CATALOG) as InstrumentId[]).filter((id) => wanted.has(id))
 })
+
 const imageUrl = ref<string | null>(null)
-const draft = ref<DraftNote[]>([])
-const savedSnapshot = ref('[]')
+/**
+ * The draft score. Edits replace it wholesale (every score operation returns
+ * a new one), so `savedSnapshot` comparison is all dirtiness needs.
+ */
+const score = ref<Score>(emptyScore())
+const savedSnapshot = ref('')
 const editing = ref(false)
-const selectedIndex = ref<number | null>(null)
+const selectedId = ref<string | null>(null)
 const saving = ref(false)
 const stopPlayback = ref<(() => void) | null>(null)
 const zoomed = ref(false)
@@ -76,40 +79,43 @@ const renaming = ref(false)
 const titleDraft = ref('')
 const composerDraft = ref('')
 const descriptionDraft = ref('')
+/** What the page shows: the engraved score, or the photo it came from. */
+const view = ref<'score' | 'photo'>('score')
 
 // ── Automatic detection ────────────────────────────────────────────────────
 const recogniser = useRecogniser()
 /** Warnings from the last run, shown until dismissed. */
 const detectionWarnings = ref<OmrWarning[]>([])
+/** Ids of the detected notes each warning's `noteIndices` points at. */
+const detectedIds = ref<string[]>([])
 const showDebug = ref(false)
 /** The stage inspector is a development tool; it never ships to a real user. */
 const isDev = import.meta.env.DEV
 /** Key signature override — changing it re-derives pitches with no re-scan. */
 const keyOverride = ref<KeySignature | null>(null)
-/** Staff positions of the last detection, needed to re-derive on a key change. */
-const detectedRelatives = ref<number[]>([])
+/** Staff positions of detected notes, by event id, needed to re-derive on a key change. */
+const detectedRelatives = ref(new Map<string, number>())
 
-const dirty = computed(() => JSON.stringify(stripTransient(draft.value)) !== savedSnapshot.value)
+const dirty = computed(() => JSON.stringify(toPlain(score.value)) !== savedSnapshot.value)
 
-/**
- * The draft as it will be persisted — `confidence` is review-only and dropped.
- *
- * `bbox` is rebuilt field by field rather than passed through. The draft is a
- * deep-reactive ref, so a nested object is a Vue Proxy, and IndexedDB's
- * structured clone rejects those outright with `DataCloneError` — the whole save
- * fails. A shallow spread hid this while notes held only primitives; the moment
- * one gained a nested object it broke. Keep this plain.
- */
-function stripTransient(notes: DraftNote[]) {
-  return notes.map(({ note, chosenFingeringId, bbox, source, barAfter }) => ({
-    note,
-    chosenFingeringId,
-    bbox: bbox
-      ? { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height }
-      : undefined,
-    source,
-    barAfter: barAfter || undefined,
-  }))
+/** The score in reading order — what selection, the overlay and the quick fixes index. */
+const items = computed(() => toSequence(score.value))
+const selectedIndex = computed(() =>
+  selectedId.value === null ? null : items.value.findIndex((item) => item.event.id === selectedId.value),
+)
+
+/** Replace the draft's reading-order list; measures and their attributes follow. */
+function commit(next: SequenceItem[]) {
+  score.value = fromSequence(next, score.value)
+}
+
+/** Change one event in place. */
+function updateAt(index: number, change: (event: NoteEvent) => NoteEvent) {
+  const next = [...items.value]
+  const item = next[index]
+  if (!item || item.event.kind !== 'note') return
+  next[index] = { ...item, event: change(item.event) }
+  commit(next)
 }
 
 async function load() {
@@ -132,18 +138,14 @@ async function load() {
   revokeBlobUrl(imageUrl.value)
   imageUrl.value = createBlobUrl(found.image)
 
-  const notes = await store.notesFor(id)
-  draft.value = notes.map(({ note, chosenFingeringId, bbox, source, barAfter }) => ({
-    note,
-    chosenFingeringId,
-    bbox,
-    source,
-    barAfter,
-  }))
-  savedSnapshot.value = JSON.stringify(stripTransient(draft.value))
+  score.value = await store.scoreFor(id)
+  savedSnapshot.value = JSON.stringify(toPlain(score.value))
+  view.value = notesOf(score.value).length ? 'score' : 'photo'
   detectionWarnings.value = []
-  detectedRelatives.value = []
+  detectedIds.value = []
+  detectedRelatives.value = new Map()
   keyOverride.value = null
+  selectedId.value = null
 }
 
 onMounted(load)
@@ -154,24 +156,42 @@ onUnmounted(() => {
   stopPlayback.value?.()
 })
 
-/** Fingerings for the whole sequence, resolved once per draft change. */
+/** Fingerings for every note, resolved once per draft change. */
 const resolved = computed(() =>
-  draft.value.map((entry) => {
-    const options = fingeringsForNote(entry.note, context.value)
-    const chosen =
-      options.find((option) => option.id === entry.chosenFingeringId) ?? options[0] ?? null
-    return { ...entry, options, chosen }
+  items.value.map((item) => {
+    if (item.event.kind !== 'note') return { ...item, note: null, options: [], chosen: null }
+    const note = item.event
+    const options = fingeringsForNote(note.pitch, context.value)
+    const chosen = options.find((option) => option.id === note.chosenFingeringId) ?? options[0] ?? null
+    return { ...item, note, options, chosen }
   }),
 )
 
-const selected = computed(() =>
-  selectedIndex.value === null ? null : (resolved.value[selectedIndex.value] ?? null),
-)
+const selected = computed(() => {
+  const index = selectedIndex.value
+  if (index === null || index < 0) return null
+  const entry = resolved.value[index]
+  return entry?.note ? { ...entry, note: entry.note, pitch: entry.note.pitch } : null
+})
 
-function addNote(note: string) {
-  draft.value.push({ note })
-  selectedIndex.value = draft.value.length - 1
-  if (settings.audioEnabled) playNote(note, context.value.instrument, 0.4)
+const noteCount = computed(() => notesOf(score.value).length)
+
+/** Where a new note starts: a quarter in rhythm mode, nothing in pitches mode. */
+function newNote(pitch: string): NoteEvent {
+  return {
+    kind: 'note',
+    id: eventId(),
+    pitch,
+    source: 'manual',
+    ...(score.value.mode === 'rhythm' ? { duration: { type: 'quarter' as const, dots: 0 } } : {}),
+  }
+}
+
+function addNote(pitch: string) {
+  const note = newNote(pitch)
+  commit([...items.value, { event: note, barAfter: false }])
+  selectedId.value = note.id
+  if (settings.audioEnabled) playNote(pitch, context.value.instrument, 0.4)
 }
 
 /**
@@ -180,11 +200,12 @@ function addNote(note: string) {
  * Nothing is saved: the result lands in the same unsaved draft the manual picker
  * writes to, so reviewing, correcting and saving all work exactly as before. If
  * detection fails or finds nothing, the manual editor is untouched and still the
- * way through.
+ * way through. Detection reads pitches, so the result is a pitches-mode score,
+ * its measures where the page's barlines are.
  */
 async function detect() {
   if (!sheet.value) return
-  if (draft.value.length && !window.confirm('Replace the notes already entered with detected ones?')) {
+  if (noteCount.value && !window.confirm('Replace the notes already entered with detected ones?')) {
     return
   }
 
@@ -196,16 +217,30 @@ async function detect() {
 
   detectionWarnings.value = outcome.warnings
   keyOverride.value = outcome.keySignature
-  detectedRelatives.value = outcome.notes.map((note) => note.relative)
-
-  draft.value = outcome.notes.map((note) => ({
-    note: note.note,
-    bbox: note.bbox,
-    source: 'detected' as const,
-    confidence: note.confidence,
-  }))
-  selectedIndex.value = draft.value.length ? 0 : null
+  const events = outcome.notes.map(
+    (note): NoteEvent => ({
+      kind: 'note',
+      id: eventId(),
+      pitch: note.note,
+      bbox: note.bbox,
+      source: 'detected',
+      confidence: note.confidence,
+    }),
+  )
+  detectedIds.value = events.map((e) => e.id)
+  detectedRelatives.value = new Map(events.map((e, i) => [e.id, outcome.notes[i].relative]))
+  const fifths = outcome.keySignature.kind === '#' ? outcome.keySignature.count : -outcome.keySignature.count
+  const detected: Score = { mode: 'pitches', clef: 'treble', measures: [{ id: eventId(), events: [], keyFifths: fifths }] }
+  score.value = fromSequence(
+    events.map((event, i) => ({
+      event,
+      barAfter: outcome.notes[i + 1] !== undefined && outcome.notes[i + 1].measureIndex !== outcome.notes[i].measureIndex,
+    })),
+    detected,
+  )
+  selectedId.value = events[0]?.id ?? null
   editing.value = false
+  view.value = 'score'
 }
 
 /**
@@ -217,14 +252,19 @@ async function detect() {
 function applyKey(key: KeySignature) {
   keyOverride.value = key
   const altered = lettersAlteredBy(key)
-
-  draft.value = draft.value.map((entry, index) => {
-    const relative = detectedRelatives.value[index]
-    if (relative == null) return entry
-    const { letter, octave } = diatonicAtStaffPosition(relative)
-    const accidental = altered.get(letter) ?? ''
-    return { ...entry, note: `${letter}${accidental}${octave}` }
-  })
+  commit(
+    items.value.map((item) => {
+      const relative = detectedRelatives.value.get(item.event.id)
+      if (relative == null || item.event.kind !== 'note') return item
+      const { letter, octave } = diatonicAtStaffPosition(relative)
+      return { ...item, event: { ...item.event, pitch: `${letter}${altered.get(letter) ?? ''}${octave}` } }
+    }),
+  )
+  const fifths = key.kind === '#' ? key.count : -key.count
+  score.value = {
+    ...score.value,
+    measures: score.value.measures.map((m, i) => (i === 0 ? { ...m, keyFifths: fifths } : m)),
+  }
 }
 
 const KEY_CHOICES: { label: string; key: KeySignature }[] = [
@@ -247,30 +287,29 @@ function isCurrentKey(key: KeySignature): boolean {
 }
 
 /** Notes worth checking: low confidence, or called out by a warning. */
-const flaggedIndices = computed(() => {
-  const flagged = new Set<number>()
+const flaggedIds = computed(() => {
+  const flagged = new Set<string>()
   for (const warning of detectionWarnings.value) {
-    for (const index of warning.noteIndices ?? []) flagged.add(index)
+    for (const index of warning.noteIndices ?? []) {
+      const id = detectedIds.value[index]
+      if (id) flagged.add(id)
+    }
   }
-  draft.value.forEach((entry, index) => {
-    if (entry.confidence != null && entry.confidence < 0.45) flagged.add(index)
-  })
+  for (const note of notesOf(score.value)) {
+    if (note.confidence != null && note.confidence < 0.45) flagged.add(note.id)
+  }
   return [...flagged]
 })
 
-const hasDetected = computed(() => draft.value.some((entry) => entry.source === 'detected'))
+const hasDetected = computed(() => notesOf(score.value).some((note) => note.source === 'detected'))
 
 function removeAt(index: number) {
-  // A divider after the removed note stays where it was, after the note before.
-  if (draft.value[index].barAfter && index > 0) {
-    draft.value[index - 1] = { ...draft.value[index - 1], barAfter: true }
-  }
-  draft.value.splice(index, 1)
-  // Keep the staff positions aligned with the notes they belong to.
-  detectedRelatives.value.splice(index, 1)
-  if (selectedIndex.value !== null && selectedIndex.value >= draft.value.length) {
-    selectedIndex.value = draft.value.length ? draft.value.length - 1 : null
-  }
+  const next = [...items.value]
+  // A barline after the removed note stays where it was, after the note before.
+  if (next[index].barAfter && index > 0) next[index - 1] = { ...next[index - 1], barAfter: true }
+  next.splice(index, 1)
+  commit(next)
+  selectedId.value = next[Math.min(index, next.length - 1)]?.event.id ?? null
 }
 
 /**
@@ -279,25 +318,33 @@ function removeAt(index: number) {
  * low). The fingering choice is reset — it belonged to the old pitch.
  */
 function shiftSemitone(index: number, delta: number) {
-  const midi = Note.midi(draft.value[index].note)
-  if (midi == null) return
-  draft.value[index] = { ...draft.value[index], note: canonicalNote(midi + delta), chosenFingeringId: undefined }
-  // An octave moves the note seven staff steps; keep that if the key is re-applied.
-  if (Math.abs(delta) === 12 && detectedRelatives.value[index] != null) detectedRelatives.value[index] += Math.sign(delta) * 7
-  if (settings.audioEnabled) playNote(draft.value[index].note, context.value.instrument, 0.4)
+  updateAt(index, (note) => {
+    const midi = Note.midi(note.pitch)
+    if (midi == null) return note
+    // An octave moves the note seven staff steps; keep that if the key is re-applied.
+    const relative = detectedRelatives.value.get(note.id)
+    if (Math.abs(delta) === 12 && relative != null) detectedRelatives.value.set(note.id, relative + Math.sign(delta) * 7)
+    return { ...note, pitch: canonicalNote(midi + delta), chosenFingeringId: undefined }
+  })
+  const event = items.value[index]?.event
+  if (settings.audioEnabled && event?.kind === 'note') playNote(event.pitch, context.value.instrument, 0.4)
 }
 
 function shiftStep(index: number, delta: number) {
-  const parsed = Note.get(draft.value[index].note)
-  if (parsed.empty || parsed.oct == null) return
-  const diatonic = parsed.oct * 7 + parsed.step + delta
-  const letter = 'CDEFGAB'[((diatonic % 7) + 7) % 7]
-  const octave = Math.floor(diatonic / 7)
-  // The new line or space takes the key signature's accidental, if one is known.
-  const accidental = keyOverride.value ? (lettersAlteredBy(keyOverride.value).get(letter) ?? '') : ''
-  draft.value[index] = { ...draft.value[index], note: `${letter}${accidental}${octave}`, chosenFingeringId: undefined }
-  if (detectedRelatives.value[index] != null) detectedRelatives.value[index] += delta
-  if (settings.audioEnabled) playNote(draft.value[index].note, context.value.instrument, 0.4)
+  updateAt(index, (note) => {
+    const parsed = Note.get(note.pitch)
+    if (parsed.empty || parsed.oct == null) return note
+    const diatonic = parsed.oct * 7 + parsed.step + delta
+    const letter = 'CDEFGAB'[((diatonic % 7) + 7) % 7]
+    const octave = Math.floor(diatonic / 7)
+    // The new line or space takes the key signature's accidental, if one is known.
+    const accidental = keyOverride.value ? (lettersAlteredBy(keyOverride.value).get(letter) ?? '') : ''
+    const relative = detectedRelatives.value.get(note.id)
+    if (relative != null) detectedRelatives.value.set(note.id, relative + delta)
+    return { ...note, pitch: `${letter}${accidental}${octave}`, chosenFingeringId: undefined }
+  })
+  const event = items.value[index]?.event
+  if (settings.audioEnabled && event?.kind === 'note') playNote(event.pitch, context.value.instrument, 0.4)
 }
 
 /**
@@ -305,61 +352,74 @@ function shiftStep(index: number, delta: number) {
  * from where the instrument reads it, or detection got the clef's octave wrong.
  */
 function shiftAllOctaves(delta: number) {
-  draft.value = draft.value.map((entry) => {
-    const midi = Note.midi(entry.note)
-    if (midi == null) return entry
-    return { ...entry, note: canonicalNote(midi + delta * 12), chosenFingeringId: undefined }
-  })
-  detectedRelatives.value = detectedRelatives.value.map((relative) =>
-    relative == null ? relative : relative + delta * 7,
+  commit(
+    items.value.map((item) => {
+      if (item.event.kind !== 'note') return item
+      const midi = Note.midi(item.event.pitch)
+      if (midi == null) return item
+      const relative = detectedRelatives.value.get(item.event.id)
+      if (relative != null) detectedRelatives.value.set(item.event.id, relative + delta * 7)
+      return { ...item, event: { ...item.event, pitch: canonicalNote(midi + delta * 12), chosenFingeringId: undefined } }
+    }),
   )
 }
 
 /** Empty the draft. Nothing is lost until saved — Discard brings it back. */
 function clearAll() {
-  if (!draft.value.length) return
-  if (!window.confirm(`Remove all ${draft.value.length} notes? You can still discard before saving.`)) return
+  if (!noteCount.value) return
+  if (!window.confirm(`Remove all ${noteCount.value} notes? You can still discard before saving.`)) return
   stopPlayback.value?.()
   stopPlayback.value = null
-  draft.value = []
-  detectedRelatives.value = []
+  score.value = emptyScore(score.value.mode)
+  detectedRelatives.value = new Map()
   detectionWarnings.value = []
-  selectedIndex.value = null
+  selectedId.value = null
 }
 
-/** Add or remove the divider drawn after a note. */
+/** Add or remove the barline after a note. */
 function toggleBar(index: number) {
-  const entry = draft.value[index]
-  draft.value[index] = { ...entry, barAfter: !entry.barAfter || undefined }
+  const next = [...items.value]
+  if (!next[index]) return
+  next[index] = { ...next[index], barAfter: !next[index].barAfter }
+  commit(next)
 }
 
 /** A copy of the selected note right after it, to fix a note detection missed. */
 function insertAfter(index: number) {
-  const entry = draft.value[index]
-  draft.value.splice(index + 1, 0, { note: entry.note, source: 'manual' })
-  detectedRelatives.value.splice(index + 1, 0, detectedRelatives.value[index])
-  selectedIndex.value = index + 1
+  const item = items.value[index]
+  if (!item || item.event.kind !== 'note') return
+  const copy: NoteEvent = { ...newNote(item.event.pitch), ...(item.event.duration ? { duration: item.event.duration } : {}) }
+  const next = [...items.value]
+  // The copy takes over the barline, so it lands in the same measure.
+  next.splice(index, 1, { ...item, barAfter: false }, { event: copy, barAfter: item.barAfter })
+  commit(next)
+  const relative = detectedRelatives.value.get(item.event.id)
+  if (relative != null) detectedRelatives.value.set(copy.id, relative)
+  selectedId.value = copy.id
 }
 
 function chooseFingering(index: number, fingering: Fingering) {
   const options = resolved.value[index].options
   // Storing the id only when it differs from the default keeps backups small
   // and lets the primary fingering follow future data corrections.
-  draft.value[index] = {
-    ...draft.value[index],
+  updateAt(index, (note) => ({
+    ...note,
     chosenFingeringId: fingering.id === options[0]?.id ? undefined : fingering.id,
-  }
+  }))
+}
+
+/** Pitches only, or with rhythm. Durations are kept while hidden. */
+function setMode(mode: Score['mode']) {
+  if (mode === score.value.mode) return
+  score.value = mode === 'rhythm' ? toRhythmMode(score.value) : toPitchesMode(score.value)
 }
 
 async function save() {
   if (!sheet.value) return
   saving.value = true
   try {
-    await store.replaceNotes(
-      sheet.value.id,
-      stripTransient(draft.value).map((entry, index) => ({ ...entry, index })),
-    )
-    savedSnapshot.value = JSON.stringify(stripTransient(draft.value))
+    await store.saveScore(sheet.value.id, score.value)
+    savedSnapshot.value = JSON.stringify(toPlain(score.value))
     editing.value = false
   } finally {
     saving.value = false
@@ -367,9 +427,9 @@ async function save() {
 }
 
 function discard() {
-  draft.value = JSON.parse(savedSnapshot.value) as DraftNote[]
+  score.value = JSON.parse(savedSnapshot.value) as Score
   editing.value = false
-  selectedIndex.value = null
+  selectedId.value = null
 }
 
 function togglePlayback() {
@@ -378,9 +438,9 @@ function togglePlayback() {
     stopPlayback.value = null
     return
   }
-  if (!draft.value.length) return
+  if (!noteCount.value) return
   stopPlayback.value = playSequence(
-    draft.value.map((entry) => entry.note),
+    notesOf(score.value).map((note) => note.pitch),
     context.value.instrument,
   )
 }
@@ -424,8 +484,8 @@ async function convertTo(id: InstrumentId) {
     return
   }
   const playable = new Set(noteRange(settings.contextFor(id)).map((entry) => entry.midi))
-  const outside = draft.value.filter((entry) => {
-    const written = transposeBetween(entry.note, context.value.instrument, target)
+  const outside = notesOf(score.value).filter((entry) => {
+    const written = transposeBetween(entry.pitch, context.value.instrument, target)
     const midi = written ? Note.midi(written) : null
     return midi == null || !playable.has(midi)
   }).length
@@ -536,31 +596,55 @@ async function deleteSheet() {
       </div>
     </form>
 
-    <!-- The scan itself, with detected notes boxed over it. Tap the image to
-         switch between fit-to-width and full size; tap a box to jump to that
-         note in the strip below. -->
-    <div v-if="imageUrl" class="relative overflow-auto rounded-xl border border-ink-700 bg-ink-50">
-      <button
-        type="button"
-        class="block w-full"
-        :aria-label="zoomed ? 'Fit image to width' : 'Zoom image'"
-        @click="zoomed = !zoomed"
-      >
-        <img
-          :src="imageUrl"
-          :alt="`Sheet music for ${sheet.title}`"
-          class="block"
-          :class="zoomed ? 'w-auto max-w-none' : 'w-full'"
-          :style="zoomed ? { height: '70svh' } : undefined"
-        />
-      </button>
-      <SheetOverlay
-        v-if="hasDetected"
-        :boxes="draft.map((entry) => entry.bbox)"
-        :selected-index="selectedIndex"
-        :flagged="flaggedIndices"
-        @select="selectedIndex = $event"
+    <!-- The engraved score, or the photo it came from. Detected notes are
+         boxed on the photo; tapping a box or a note selects it in both. -->
+    <div class="space-y-2">
+      <div role="tablist" aria-label="Show" class="inline-flex rounded-lg border border-ink-700 bg-ink-950 p-0.5">
+        <button
+          v-for="option in (['score', 'photo'] as const)"
+          :key="option"
+          type="button"
+          role="tab"
+          :aria-selected="view === option"
+          class="rounded-md px-3 py-1 text-xs font-semibold transition-colors"
+          :class="view === option ? 'bg-accent-400 text-ink-950' : 'text-ink-400 hover:text-ink-200'"
+          @click="view = option"
+        >
+          {{ option === 'score' ? 'Score' : 'Photo' }}
+        </button>
+      </div>
+
+      <ScoreView
+        v-if="view === 'score' && noteCount"
+        :score="score"
+        :selected-id="selectedId"
+        :flagged="flaggedIds"
+        @select="selectedId = $event === selectedId ? null : $event"
       />
+
+      <div v-else-if="imageUrl" class="relative overflow-auto rounded-xl border border-ink-700 bg-ink-50">
+        <button
+          type="button"
+          class="block w-full"
+          :aria-label="zoomed ? 'Fit image to width' : 'Zoom image'"
+          @click="zoomed = !zoomed"
+        >
+          <img
+            :src="imageUrl"
+            :alt="`Sheet music for ${sheet.title}`"
+            class="block"
+            :class="zoomed ? 'w-auto max-w-none' : 'w-full'"
+            :style="zoomed ? { height: '70svh' } : undefined"
+          />
+        </button>
+        <SheetOverlay
+          v-if="hasDetected"
+          :boxes="items.map((item) => (item.event.kind === 'note' ? item.event.bbox : undefined))"
+          :selected-index="selectedIndex"
+          :flagged="items.flatMap((item, index) => (flaggedIds.includes(item.event.id) ? [index] : []))"
+          @select="selectedId = items[$event]?.event.id ?? null"
+        />
+      </div>
     </div>
 
     <!-- Detection: progress, then anything the recogniser wants to warn about. -->
@@ -653,11 +737,11 @@ async function deleteSheet() {
     <section class="space-y-3">
       <div class="flex items-center justify-between gap-3">
         <h2 class="text-xs font-semibold uppercase tracking-wider text-ink-400">
-          {{ draft.length }} {{ draft.length === 1 ? 'note' : 'notes' }}
+          {{ noteCount }} {{ noteCount === 1 ? 'note' : 'notes' }}
         </h2>
         <div class="flex gap-2">
           <button
-            v-if="draft.length && settings.audioEnabled"
+            v-if="noteCount && settings.audioEnabled"
             type="button"
             class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400"
             @click="togglePlayback"
@@ -677,13 +761,38 @@ async function deleteSheet() {
             class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400"
             @click="editing = !editing"
           >
-            {{ editing ? 'Done adding' : draft.length ? 'Add notes' : 'Note it down' }}
+            {{ editing ? 'Done adding' : noteCount ? 'Add notes' : 'Note it down' }}
           </button>
         </div>
       </div>
 
+      <!-- Pitches only, or with rhythm: durations are kept while hidden. -->
+      <div v-if="noteCount" role="radiogroup" aria-label="Notation" class="flex flex-wrap items-center gap-2">
+        <div class="inline-flex rounded-lg border border-ink-700 bg-ink-950 p-0.5">
+          <button
+            v-for="mode in (['pitches', 'rhythm'] as const)"
+            :key="mode"
+            type="button"
+            role="radio"
+            :aria-checked="score.mode === mode"
+            class="rounded-md px-3 py-1 text-xs font-semibold transition-colors"
+            :class="score.mode === mode ? 'bg-accent-400 text-ink-950' : 'text-ink-400 hover:text-ink-200'"
+            @click="setMode(mode)"
+          >
+            {{ mode === 'pitches' ? 'Pitches only' : 'With rhythm' }}
+          </button>
+        </div>
+        <span class="text-[11px] text-ink-400">
+          {{
+            score.mode === 'pitches'
+              ? 'Order of notes only — no durations.'
+              : 'Durations, measures and time signature.'
+          }}
+        </span>
+      </div>
+
       <!-- Whole-sequence edits. They only touch the draft, so Discard undoes them. -->
-      <div v-if="draft.length" class="flex flex-wrap gap-1.5" aria-label="Edit all notes">
+      <div v-if="noteCount" class="flex flex-wrap gap-1.5" aria-label="Edit all notes">
         <button
           type="button"
           title="Move every note down an octave"
@@ -711,7 +820,7 @@ async function deleteSheet() {
       </div>
 
       <div
-        v-if="!draft.length && !editing"
+        v-if="!noteCount && !editing"
         class="space-y-2 rounded-xl border border-dashed border-ink-700 px-4 py-8 text-center"
       >
         <p class="text-sm text-ink-400">
@@ -725,58 +834,6 @@ async function deleteSheet() {
         </p>
       </div>
 
-      <!-- Sequence strip, with the selected note's fingering beside it so it
-           stays in view while tapping through the notes. -->
-      <div v-if="draft.length" class="flex items-start gap-3">
-        <ol class="flex min-w-0 flex-1 flex-wrap gap-1.5">
-          <template v-for="(entry, index) in resolved" :key="index">
-            <li>
-              <button
-                type="button"
-                class="flex min-w-11 flex-col items-center rounded-lg border px-2 py-1.5 transition-colors"
-                :class="
-                  selectedIndex === index
-                    ? 'border-accent-400 bg-ink-800'
-                    : 'border-ink-700 bg-ink-900 hover:border-ink-400'
-                "
-                @click="selectedIndex = selectedIndex === index ? null : index"
-              >
-                <NoteBadge :note="entry.note" size="sm" />
-                <span v-if="!entry.chosen" class="text-[10px] text-amber-300">?</span>
-                <!-- A dot marks a note the recogniser was unsure about, so attention
-                     goes where it is actually needed rather than note by note. -->
-                <span
-                  v-else-if="flaggedIndices.includes(index)"
-                  class="text-[10px] leading-none text-amber-300"
-                  :aria-label="`${entry.note} needs checking`"
-                  >•</span
-                >
-              </button>
-            </li>
-            <li
-              v-if="entry.barAfter"
-              class="w-0.5 self-stretch rounded-full bg-accent-300"
-              aria-label="Divider"
-            />
-          </template>
-        </ol>
-
-        <aside
-          v-if="selected"
-          class="sticky top-18 flex shrink-0 flex-col items-center gap-1.5 rounded-xl border border-ink-700 bg-ink-900 p-2 md:top-4"
-          :aria-label="`Fingering for ${selected.note}`"
-        >
-          <NoteBadge :note="selected.note" size="md" />
-          <KeyChart
-            v-if="selected.chosen"
-            :keys="selected.chosen.keys"
-            :partial="selected.chosen.partial"
-            :instrument="context.instrument"
-            size="sm"
-          />
-          <p v-else class="w-20 text-center text-[11px] text-amber-200">No fingering</p>
-        </aside>
-      </div>
     </section>
 
     <!-- Detail for the selected note. Deliberately above the keypad: while
@@ -785,11 +842,11 @@ async function deleteSheet() {
     <section
       v-if="selected"
       class="space-y-3 rounded-xl border border-ink-700 bg-ink-900 p-4"
-      :aria-label="`Details for ${selected.note}`"
+      :aria-label="`Details for ${selected.pitch}`"
     >
       <div class="flex items-center gap-3">
-        <StaffPosition :note="selected.note" size="sm" class="shrink-0" />
-        <NoteBadge :note="selected.note" size="md" />
+        <StaffPosition :note="selected.pitch" size="sm" class="shrink-0" />
+        <NoteBadge :note="selected.pitch" size="md" />
         <span class="text-xs text-ink-400">note {{ (selectedIndex ?? 0) + 1 }}</span>
         <button
           type="button"
@@ -828,6 +885,13 @@ async function deleteSheet() {
       </div>
 
       <div v-if="selected.chosen" class="flex gap-4">
+        <KeyChart
+          :keys="selected.chosen.keys"
+          :partial="selected.chosen.partial"
+          :instrument="context.instrument"
+          size="sm"
+          class="shrink-0"
+        />
         <div class="min-w-0 flex-1 space-y-2">
           <p class="font-mono text-xs break-words text-ink-200">
             {{ prettyCode(selected.chosen.code) }}
@@ -869,16 +933,16 @@ async function deleteSheet() {
       </div>
 
       <p v-else class="text-sm text-amber-200">
-        No fingering on record for {{ noteLabel(selected.note) }} with your instrument setup.
+        No fingering on record for {{ noteLabel(selected.pitch) }} with your instrument setup.
       </p>
     </section>
 
     <NotePicker
       v-if="editing"
       :context="context"
-      :can-bar="draft.length > 0"
+      :can-bar="items.length > 0"
       @add="addNote"
-      @bar="toggleBar(draft.length - 1)"
+      @bar="toggleBar(items.length - 1)"
     />
 
     <div v-if="dirty" class="sticky bottom-24 flex gap-2 md:bottom-4">

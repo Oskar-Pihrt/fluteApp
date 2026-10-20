@@ -1,12 +1,27 @@
 import { Note } from 'tonal'
+import {
+  DURATION_TYPES,
+  type Duration,
+  type DurationType,
+  eventId,
+  type Jump,
+  type Measure,
+  type Score,
+  type ScoreEvent,
+  type TimeSignature,
+  TICKS_PER_QUARTER,
+  durationTicks,
+} from '@/score/model'
 
 /**
  * MusicXML import: the exact alternative to reading notes off a picture.
  *
  * MuseScore, Finale, Sibelius and Dorico all export MusicXML, and many free
  * scores are published in it, so when a player has the file there is no reason
- * to guess. Only what the app stores is read — the pitch sequence of one part —
- * so durations, dynamics and layout are skipped entirely.
+ * to guess. Each part is read twice over: as the flat pitch sequence the note
+ * strip and detection compare against, and as a full score — measures,
+ * durations, rests, ties, time and key signatures, repeats, endings and
+ * D.C./D.S. marks. Dynamics, articulations and layout are skipped.
  *
  * A deliberately small reader rather than a DOM parse: MusicXML's note
  * structure is regular, and this way it runs (and is tested) without a DOM.
@@ -22,6 +37,8 @@ export interface MusicXmlPart {
    * alto saxophone part, 0 for a flute.
    */
   transposeSemitones: number
+  /** The part as a rhythm-mode score, in its written pitch. */
+  score: Score
 }
 
 export interface MusicXmlScore {
@@ -131,10 +148,186 @@ export function parseMusicXml(xml: string, options: ParseOptions = {}): MusicXml
       lastMidi = midi
       lastWasChordable = true
     }
-    parts.push({ id, name: names.get(id) ?? id, notes, transposeSemitones })
+    parts.push({ id, name: names.get(id) ?? id, notes, transposeSemitones, score: partScore(body) })
   }
 
   return { title, composer, parts: parts.filter((part) => part.notes.length) }
+}
+
+const TYPE_NAMES: Record<string, DurationType> = {
+  whole: 'whole',
+  half: 'half',
+  quarter: 'quarter',
+  eighth: 'eighth',
+  '16th': '16th',
+  '32nd': '32nd',
+  // Shorter values are drawn as the shortest the app has.
+  '64th': '32nd',
+  '128th': '32nd',
+  breve: 'whole',
+}
+
+/** A duration from `<type>` and `<dot/>`s, or failing that from `<duration>` in divisions. */
+function readDuration(content: string, divisions: number): Duration | undefined {
+  const type = text(content, 'type')
+  const dots = Math.min(2, (content.match(/<dot\s*\/?>/g) ?? []).length)
+  if (type && TYPE_NAMES[type]) return { type: TYPE_NAMES[type], dots }
+  const raw = Number(text(content, 'duration'))
+  if (!raw || !divisions) return undefined
+  const ticks = (raw / divisions) * TICKS_PER_QUARTER
+  // The plain or dotted value closest to the length written.
+  let best: Duration | undefined
+  for (const candidate of DURATION_TYPES) {
+    for (const d of [0, 1, 2]) {
+      const option = { type: candidate, dots: d }
+      if (!best || Math.abs(durationTicks(option) - ticks) < Math.abs(durationTicks(best) - ticks)) best = option
+    }
+  }
+  return best
+}
+
+const JUMP_WORDS: [RegExp, Jump][] = [
+  [/d\.?\s*c\.?\s*al\s*fine/i, 'dcAlFine'],
+  [/d\.?\s*c\.?\s*al\s*coda/i, 'dcAlCoda'],
+  [/d\.?\s*s\.?\s*al\s*fine/i, 'dsAlFine'],
+  [/d\.?\s*s\.?\s*al\s*coda/i, 'dsAlCoda'],
+  [/da\s*capo|^\s*d\.\s*c\./i, 'dc'],
+  [/dal\s*segno|^\s*d\.\s*s\./i, 'ds'],
+  [/to\s*coda/i, 'toCoda'],
+  [/^\s*fine\s*$/i, 'fine'],
+]
+
+function jumpsIn(direction: string): Jump[] {
+  const found: Jump[] = []
+  if (/<segno[\s/>]/.test(direction)) found.push('segno')
+  if (/<coda[\s/>]/.test(direction)) found.push('coda')
+  for (const words of direction.matchAll(/<words[^>]*>([\s\S]*?)<\/words>/g)) {
+    const phrase = decode(words[1])
+    const hit = JUMP_WORDS.find(([pattern]) => pattern.test(phrase))
+    if (hit) found.push(hit[1])
+  }
+  if (!found.some((j) => j.startsWith('dc')) && /<sound[^>]*dacapo="yes"/.test(direction)) found.push('dc')
+  if (!found.some((j) => j.startsWith('ds')) && /<sound[^>]*dalsegno=/.test(direction)) found.push('ds')
+  if (!found.includes('fine') && /<sound[^>]*fine=/.test(direction)) found.push('fine')
+  if (!found.includes('toCoda') && /<sound[^>]*tocoda=/.test(direction)) found.push('toCoda')
+  return found
+}
+
+/**
+ * One part as a rhythm-mode score: its first voice, chords reduced to the
+ * top note, grace notes left out (they take no time). Tuplets are read at
+ * their written value, so a measure of triplets reads as overfull.
+ */
+function partScore(body: string): Score {
+  const measures: Measure[] = []
+  let divisions = 1
+  let tempo: number | undefined
+  let lastKey: number | undefined
+  let lastTime: string | undefined
+  let openEnding: number[] | null = null
+
+  for (const match of body.matchAll(/<measure\b[^>]*>([\s\S]*?)<\/measure>/g)) {
+    const content = match[1]
+    const measure: Measure = { id: eventId(), events: [] }
+    let lastNote: (ScoreEvent & { kind: 'note' }) | null = null
+
+    for (const element of content.matchAll(
+      /<(attributes|note|barline|direction)\b([^>]*)>([\s\S]*?)<\/\1>|<sound\b[^>]*\/>/g,
+    )) {
+      const [whole, kind, attrs, inner] = element
+      if (!kind) {
+        const bpm = whole.match(/tempo="([\d.]+)"/)
+        if (bpm && tempo === undefined) tempo = Math.round(Number(bpm[1]))
+        continue
+      }
+      if (kind === 'attributes') {
+        const div = Number(text(inner, 'divisions'))
+        if (div) divisions = div
+        const fifths = text(inner, 'fifths')
+        if (fifths !== null && Number(fifths) !== lastKey) {
+          lastKey = Number(fifths)
+          measure.keyFifths = lastKey
+        }
+        const timeXml = text(inner, 'time', true)
+        if (timeXml) {
+          const symbol = inner.match(/<time[^>]*symbol="(common|cut)"/)?.[1] as TimeSignature['symbol']
+          const time: TimeSignature = {
+            beats: Number(text(timeXml, 'beats')) || 4,
+            beatType: Number(text(timeXml, 'beat-type')) || 4,
+            ...(symbol ? { symbol } : {}),
+          }
+          const signature = JSON.stringify(time)
+          if (signature !== lastTime) {
+            lastTime = signature
+            measure.time = time
+          }
+        }
+        continue
+      }
+      if (kind === 'direction') {
+        const jumps = jumpsIn(inner)
+        if (jumps.length) measure.jumps = [...(measure.jumps ?? []), ...jumps]
+        const bpm = inner.match(/<sound[^>]*tempo="([\d.]+)"/)
+        if (bpm && tempo === undefined) tempo = Math.round(Number(bpm[1]))
+        continue
+      }
+      if (kind === 'barline') {
+        const right = !/location="left"/.test(attrs)
+        if (/<repeat[^>]*direction="forward"/.test(inner)) measure.barStart = 'repeatStart'
+        if (/<repeat[^>]*direction="backward"/.test(inner)) measure.barEnd = 'repeatEnd'
+        else if (right && /<bar-style>light-heavy</.test(inner)) measure.barEnd = 'final'
+        else if (right && /<bar-style>light-light</.test(inner)) measure.barEnd = 'double'
+        const ending = inner.match(/<ending[^>]*number="([^"]+)"[^>]*type="(start|stop|discontinue)"/)
+        if (ending && ending[2] === 'start') {
+          openEnding = ending[1].split(/[,\s]+/).map(Number).filter(Boolean)
+        }
+        if (ending && ending[2] !== 'start') {
+          measure.volta = { numbers: openEnding ?? ending[1].split(/[,\s]+/).map(Number).filter(Boolean) }
+          openEnding = null
+        }
+        continue
+      }
+      // A note or rest, first voice only.
+      const voice = text(inner, 'voice')
+      if (voice && voice !== '1') continue
+      if (/<grace[\s/>]/.test(inner)) continue
+      const duration = readDuration(inner, divisions)
+      if (/<rest[\s/>]/.test(inner)) {
+        // A whole-measure rest is written with the measure's duration but no type.
+        measure.events.push({ kind: 'rest', id: eventId(), ...(duration ? { duration } : {}) })
+        lastNote = null
+        continue
+      }
+      const pitch = text(inner, 'pitch', true)
+      if (!pitch) continue
+      const step = text(pitch, 'step')?.toUpperCase() ?? ''
+      if (!STEPS.includes(step)) continue
+      const name = spell(step, Number(text(pitch, 'alter') ?? 0), Number(text(pitch, 'octave') ?? 4))
+      if (/<chord[\s/>]/.test(inner)) {
+        if (lastNote && (Note.midi(name) ?? 0) > (Note.midi(lastNote.pitch) ?? 0)) lastNote.pitch = name
+        continue
+      }
+      const note: ScoreEvent & { kind: 'note' } = {
+        kind: 'note',
+        id: eventId(),
+        pitch: name,
+        source: 'imported',
+        ...(duration ? { duration } : {}),
+        ...(/<tie[^>]*type="start"/.test(inner) ? { tie: true } : {}),
+      }
+      measure.events.push(note)
+      lastNote = note
+    }
+    if (openEnding && !measure.volta) measure.volta = { numbers: openEnding }
+    measures.push(measure)
+  }
+
+  return {
+    mode: 'rhythm',
+    clef: 'treble',
+    measures: measures.length ? measures : [{ id: eventId(), events: [] }],
+    ...(tempo ? { tempo } : {}),
+  }
 }
 
 /**
