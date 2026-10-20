@@ -24,6 +24,7 @@ export interface RenderOptions {
 
 export interface NoteHit {
   id: string
+  measureIndex: number
   x: number
   y: number
   width: number
@@ -273,7 +274,7 @@ export function renderScore(VF: VexFlow, element: HTMLDivElement, score: Score, 
       for (const [id, note] of byId) {
         placed.set(id, { note, system: systemIndex })
         const box = note.getBoundingBox()
-        if (box) hits.push({ id, x: box.getX(), y: box.getY(), width: box.getW(), height: box.getH() })
+        if (box) hits.push({ id, measureIndex: index, x: box.getX(), y: box.getY(), width: box.getW(), height: box.getH() })
       }
       staves.push({
         measureIndex: index,

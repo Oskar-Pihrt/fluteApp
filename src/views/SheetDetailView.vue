@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import MeasureTools from '@/components/MeasureTools.vue'
+import ScorePalette from '@/components/ScorePalette.vue'
+import type { StaffTap } from '@/components/ScoreView.vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import InstrumentMenu from '@/components/InstrumentMenu.vue'
 import KeyChart from '@/components/KeyChart.vue'
@@ -22,9 +25,28 @@ import { CATALOG, type InstrumentId, loadInstrument } from '@/instruments'
 import { Note } from 'tonal'
 import { useSettingsStore } from '@/stores/settings'
 import { sheetInstrument, useSheetsStore } from '@/stores/sheets'
-import { emptyScore, eventId, type NoteEvent, type Score, toPlain } from '@/score/model'
+import { type Duration, type DurationType, emptyScore, eventId, type NoteEvent, type Score, toPlain } from '@/score/model'
+import {
+  cycleDots,
+  eventById,
+  firstOffMeasure,
+  insertAfter as insertEventAfter,
+  insertAt,
+  keyAlterations,
+  locate,
+  patchMeasure,
+  pitchAt,
+  rebarFrom,
+  removeEvent,
+  setAccidental,
+  setDuration,
+  toggleRest,
+  toggleTie,
+} from '@/score/edit'
 import {
   fromSequence,
+  keyAt,
+  measureFill,
   notesOf,
   type SequenceItem,
   toPitchesMode,
@@ -98,6 +120,43 @@ const detectedRelatives = ref(new Map<string, number>())
 
 const dirty = computed(() => JSON.stringify(toPlain(score.value)) !== savedSnapshot.value)
 
+// ── Undo / redo ────────────────────────────────────────────────────────────
+// Every edit replaces the score, so history is just the scores it replaced.
+const history = ref<Score[]>([])
+const future = ref<Score[]>([])
+let replaying = false
+watch(
+  score,
+  (_, previous) => {
+    if (replaying || !previous) return
+    history.value.push(previous)
+    if (history.value.length > 200) history.value.shift()
+    future.value = []
+  },
+  { flush: 'sync' },
+)
+
+/** Set the score without it counting as an edit (loading, undo, redo). */
+function replace(next: Score) {
+  replaying = true
+  score.value = next
+  replaying = false
+}
+
+function undo() {
+  const previous = history.value.pop()
+  if (!previous) return
+  future.value.push(score.value)
+  replace(previous)
+}
+
+function redo() {
+  const next = future.value.pop()
+  if (!next) return
+  history.value.push(score.value)
+  replace(next)
+}
+
 /** The score in reading order — what selection, the overlay and the quick fixes index. */
 const items = computed(() => toSequence(score.value))
 const selectedIndex = computed(() =>
@@ -138,7 +197,9 @@ async function load() {
   revokeBlobUrl(imageUrl.value)
   imageUrl.value = createBlobUrl(found.image)
 
-  score.value = await store.scoreFor(id)
+  replace(await store.scoreFor(id))
+  history.value = []
+  future.value = []
   savedSnapshot.value = JSON.stringify(toPlain(score.value))
   view.value = notesOf(score.value).length ? 'score' : 'photo'
   detectionWarnings.value = []
@@ -187,12 +248,145 @@ function newNote(pitch: string): NoteEvent {
   }
 }
 
+/** Duration new notes get in rhythm mode — the last one picked on the palette. */
+const inputDuration = ref<Duration>({ type: 'quarter', dots: 0 })
+
+/** Type a note in: after the selection (or at the end), then select it. */
 function addNote(pitch: string) {
   const note = newNote(pitch)
-  commit([...items.value, { event: note, barAfter: false }])
+  score.value = insertEventAfter(score.value, selectedId.value, note)
   selectedId.value = note.id
   if (settings.audioEnabled) playNote(pitch, context.value.instrument, 0.4)
 }
+
+/** A tap on an empty spot of the staff: that line or space, at that place. */
+function onStaffTap(tap: StaffTap) {
+  const pitch = pitchAt(tap.relative, keyAt(score.value, tap.measureIndex))
+  const note = newNote(pitch)
+  score.value = tap.afterId
+    ? insertEventAfter(score.value, tap.afterId, note)
+    : insertAt(score.value, { measure: tap.measureIndex, index: 0 }, note)
+  selectedId.value = note.id
+  if (settings.audioEnabled) playNote(pitch, context.value.instrument, 0.4)
+}
+
+const selectedEvent = computed(() => (selectedId.value ? eventById(score.value, selectedId.value) : null))
+/** The measure the measure tools work on: the selection's, else the last. */
+const toolMeasure = computed(() => {
+  const at = selectedId.value ? locate(score.value, selectedId.value) : null
+  return at?.measure ?? score.value.measures.length - 1
+})
+const offMeasures = computed(() =>
+  score.value.mode === 'rhythm' ? measureFill(score.value).filter((fill) => fill !== 'ok').length : 0,
+)
+
+function paletteDuration(type: DurationType) {
+  inputDuration.value = { type, dots: 0 }
+  if (selectedId.value) {
+    const dots = selectedEvent.value?.duration?.dots ?? 0
+    score.value = setDuration(score.value, selectedId.value, { type, dots })
+  }
+}
+
+function paletteDot() {
+  if (selectedId.value) score.value = cycleDots(score.value, selectedId.value)
+}
+
+function paletteRest() {
+  if (!selectedId.value) return
+  const previous = [...notesOf(score.value)].reverse().find((n) => n.id !== selectedId.value)
+  score.value = toggleRest(score.value, selectedId.value, previous?.pitch ?? 'B4')
+}
+
+function paletteTie() {
+  if (selectedId.value) score.value = toggleTie(score.value, selectedId.value)
+}
+
+function paletteAccidental(alter: -1 | 0 | 1) {
+  if (!selectedId.value) return
+  score.value = setAccidental(score.value, selectedId.value, alter)
+  const event = selectedEvent.value
+  if (settings.audioEnabled && event?.kind === 'note') playNote(event.pitch, context.value.instrument, 0.4)
+}
+
+function paletteRemove() {
+  const index = selectedIndex.value
+  if (index === null || index < 0) return
+  const id = items.value[index].event.id
+  const next = items.value[index + 1]?.event.id ?? items.value[index - 1]?.event.id ?? null
+  score.value = removeEvent(score.value, id)
+  selectedId.value = next
+}
+
+function addMeasureAfter() {
+  const index = toolMeasure.value
+  const measures = [...score.value.measures]
+  measures.splice(index + 1, 0, { id: eventId(), events: [] })
+  score.value = { ...score.value, measures }
+}
+
+function removeMeasure() {
+  if (score.value.measures.length < 2) return
+  const index = toolMeasure.value
+  const count = score.value.measures[index].events.length
+  if (count && !window.confirm(`Delete measure ${index + 1} and its ${count} ${count === 1 ? 'event' : 'events'}?`)) return
+  score.value = { ...score.value, measures: score.value.measures.filter((_, i) => i !== index) }
+  selectedId.value = null
+}
+
+/**
+ * Desktop shortcuts while editing, after MuseScore: 2–7 durations (32nd to
+ * whole), . dot, 0 rest, A–G type a note, ↑/↓ semitone (with Ctrl an
+ * octave), ←/→ move the selection, Del delete, + tie, Ctrl+Z / Ctrl+Shift+Z.
+ */
+function onKeydown(event: KeyboardEvent) {
+  if (!editing.value) return
+  const target = event.target as HTMLElement | null
+  if (target && /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName)) return
+  const ctrl = event.ctrlKey || event.metaKey
+  const key = event.key
+  const index = selectedIndex.value ?? -1
+  const handled = (() => {
+    if (ctrl && key.toLowerCase() === 'z') return event.shiftKey ? redo() : undo(), true
+    if (ctrl && key.toLowerCase() === 'y') return redo(), true
+    if (ctrl) return false
+    const durations: Record<string, DurationType> = { '2': '32nd', '3': '16th', '4': 'eighth', '5': 'quarter', '6': 'half', '7': 'whole' }
+    if (durations[key] && score.value.mode === 'rhythm') return paletteDuration(durations[key]), true
+    if (key === '.') return paletteDot(), true
+    if (key === '0') return paletteRest(), true
+    if (key === '+') return paletteTie(), true
+    if (key === 'Delete' || key === 'Backspace') return paletteRemove(), true
+    if (key === 'ArrowLeft' && index > 0) return (selectedId.value = items.value[index - 1].event.id), true
+    if (key === 'ArrowRight' && index < items.value.length - 1)
+      return (selectedId.value = items.value[index + 1].event.id), true
+    if ((key === 'ArrowUp' || key === 'ArrowDown') && index >= 0) {
+      return shiftSemitone(index, (key === 'ArrowUp' ? 1 : -1) * (event.altKey ? 12 : 1)), true
+    }
+    if (/^[a-g]$/i.test(key)) {
+      // The octave that puts it nearest the note before.
+      const previous = selectedEvent.value?.kind === 'note' ? selectedEvent.value.pitch : notesOf(score.value).at(-1)?.pitch
+      const reference = (previous && Note.midi(previous)) || 72
+      const letter = key.toUpperCase()
+      const alter = keyAlterationFor(letter)
+      const candidates = [3, 4, 5, 6, 7].map((octave) => `${letter}${alter}${octave}`)
+      const nearest = candidates.sort(
+        (a, b) => Math.abs((Note.midi(a) ?? 0) - reference) - Math.abs((Note.midi(b) ?? 0) - reference),
+      )[0]
+      return addNote(nearest), true
+    }
+    return false
+  })()
+  if (handled) event.preventDefault()
+}
+
+/** The accidental the key signature in force at the selection gives a letter. */
+function keyAlterationFor(letter: string): string {
+  const at = selectedId.value ? locate(score.value, selectedId.value) : null
+  return keyAlterations(keyAt(score.value, at?.measure ?? 0)).get(letter) ?? ''
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 /**
  * Run automatic detection and load the result into the draft as suggestions.
@@ -408,6 +602,11 @@ function chooseFingering(index: number, fingering: Fingering) {
   }))
 }
 
+function toggleEditing() {
+  editing.value = !editing.value
+  if (editing.value) view.value = 'score'
+}
+
 /** Pitches only, or with rhythm. Durations are kept while hidden. */
 function setMode(mode: Score['mode']) {
   if (mode === score.value.mode) return
@@ -427,7 +626,9 @@ async function save() {
 }
 
 function discard() {
-  score.value = JSON.parse(savedSnapshot.value) as Score
+  replace(JSON.parse(savedSnapshot.value) as Score)
+  history.value = []
+  future.value = []
   editing.value = false
   selectedId.value = null
 }
@@ -615,14 +816,23 @@ async function deleteSheet() {
       </div>
 
       <ScoreView
-        v-if="view === 'score' && noteCount"
+        v-if="view === 'score' && (noteCount || editing)"
         :score="score"
         :selected-id="selectedId"
         :flagged="flaggedIds"
-        @select="selectedId = $event === selectedId ? null : $event"
+        :editing="editing"
+        @select="selectedId = editing ? $event : $event === selectedId ? null : $event"
+        @staff-tap="onStaffTap"
       />
+      <p v-if="editing && view === 'score'" class="text-[11px] text-ink-400">
+        Tap a line or space on the staff to put a note there, or pick a pitch below. Tap a note to
+        select it.
+      </p>
 
-      <div v-else-if="imageUrl" class="relative overflow-auto rounded-xl border border-ink-700 bg-ink-50">
+      <div
+        v-if="imageUrl && !(view === 'score' && (noteCount || editing))"
+        class="relative overflow-auto rounded-xl border border-ink-700 bg-ink-50"
+      >
         <button
           type="button"
           class="block w-full"
@@ -759,15 +969,15 @@ async function deleteSheet() {
           <button
             type="button"
             class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400"
-            @click="editing = !editing"
+            @click="toggleEditing"
           >
-            {{ editing ? 'Done adding' : noteCount ? 'Add notes' : 'Note it down' }}
+            {{ editing ? 'Done editing' : noteCount ? 'Edit' : 'Note it down' }}
           </button>
         </div>
       </div>
 
       <!-- Pitches only, or with rhythm: durations are kept while hidden. -->
-      <div v-if="noteCount" role="radiogroup" aria-label="Notation" class="flex flex-wrap items-center gap-2">
+      <div v-if="noteCount || editing" role="radiogroup" aria-label="Notation" class="flex flex-wrap items-center gap-2">
         <div class="inline-flex rounded-lg border border-ink-700 bg-ink-950 p-0.5">
           <button
             v-for="mode in (['pitches', 'rhythm'] as const)"
@@ -937,30 +1147,59 @@ async function deleteSheet() {
       </p>
     </section>
 
-    <NotePicker
-      v-if="editing"
-      :context="context"
-      :can-bar="items.length > 0"
-      @add="addNote"
-      @bar="toggleBar(items.length - 1)"
-    />
+    <template v-if="editing">
+      <NotePicker
+        :context="context"
+        :can-bar="items.length > 0"
+        @add="addNote"
+        @bar="toggleBar(selectedIndex !== null && selectedIndex >= 0 ? selectedIndex : items.length - 1)"
+      />
+      <MeasureTools
+        :score="score"
+        :measure-index="toolMeasure"
+        :off-measures="offMeasures"
+        @patch="score = patchMeasure(score, toolMeasure, $event)"
+        @fix="score = rebarFrom(score, Math.max(0, firstOffMeasure(score)))"
+        @add-measure="addMeasureAfter"
+        @remove-measure="removeMeasure"
+      />
+    </template>
 
-    <div v-if="dirty" class="sticky bottom-24 flex gap-2 md:bottom-4">
-      <button
-        type="button"
-        class="flex-1 rounded-lg bg-accent-400 px-4 py-2.5 text-sm font-semibold text-ink-950 shadow-lg shadow-ink-950/50 transition-colors hover:bg-accent-300 disabled:opacity-50"
-        :disabled="saving"
-        @click="save"
-      >
-        {{ saving ? 'Saving…' : 'Save notes' }}
-      </button>
-      <button
-        type="button"
-        class="rounded-lg border border-ink-600 bg-ink-900 px-4 py-2.5 text-sm font-medium text-ink-200 shadow-lg shadow-ink-950/50 transition-colors hover:border-ink-400"
-        @click="discard"
-      >
-        Discard
-      </button>
+    <!-- The palette and the save bar stay at hand while scrolling the score. -->
+    <div v-if="editing || dirty" class="sticky bottom-24 space-y-2 md:bottom-4">
+      <ScorePalette
+        v-if="editing"
+        :mode="score.mode"
+        :selected="selectedEvent"
+        :input-duration="inputDuration"
+        :can-undo="history.length > 0"
+        :can-redo="future.length > 0"
+        @duration="paletteDuration"
+        @dot="paletteDot"
+        @rest="paletteRest"
+        @tie="paletteTie"
+        @accidental="paletteAccidental"
+        @remove="paletteRemove"
+        @undo="undo"
+        @redo="redo"
+      />
+      <div v-if="dirty" class="flex gap-2">
+        <button
+          type="button"
+          class="flex-1 rounded-lg bg-accent-400 px-4 py-2.5 text-sm font-semibold text-ink-950 shadow-lg shadow-ink-950/50 transition-colors hover:bg-accent-300 disabled:opacity-50"
+          :disabled="saving"
+          @click="save"
+        >
+          {{ saving ? 'Saving…' : 'Save' }}
+        </button>
+        <button
+          type="button"
+          class="rounded-lg border border-ink-600 bg-ink-900 px-4 py-2.5 text-sm font-medium text-ink-200 shadow-lg shadow-ink-950/50 transition-colors hover:border-ink-400"
+          @click="discard"
+        >
+          Discard
+        </button>
+      </div>
     </div>
   </div>
   <p
