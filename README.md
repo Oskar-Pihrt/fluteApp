@@ -234,6 +234,14 @@ upgrade turned every older sheet's note list into a pitches-mode score, its
 dividers into measures; the old `sheetNotes` table is left untouched. Backups
 are version 4 and carry the score; older backups still import.
 
+**Editing** (`src/score/edit.ts`, `ScorePalette.vue`, `MeasureTools.vue`): a
+palette after MuseScore's — durations, dot, rest, tie, accidentals, delete,
+undo/redo — and per-measure time and key signatures, barlines, endings and
+D.C./D.S. marks. Notes go in by tapping a line or space of the staff, picking
+a pitch, or on a desktop typing A–G (2–7 set durations, `.` dot, `0` rest, `+`
+tie, arrows move and transpose, Ctrl+Z/Ctrl+Shift+Z). Measures that don't add
+up are tinted, and *Regroup measures* rebars from the first one that doesn't.
+
 MusicXML import reads the whole part — durations, rests, ties, time and key
 changes, repeats, endings, D.C./D.S. and tempo. Detection from a photo still
 reads pitches only, into a pitches-mode score whose measures follow the
@@ -241,9 +249,8 @@ page's barlines.
 
 ## Not built yet
 
-Durations are not yet **detected** from a photo, the score can't be edited
-note by note beyond the quick fixes, and playback is still evenly spaced
-notes — all planned. Chords are detected but reduced to their top note, with a
+Durations are not yet **detected** from a photo, and playback is still evenly
+spaced notes — both planned. Chords are detected but reduced to their top note, with a
 warning.
 
 ## Logo and icons

@@ -15,11 +15,21 @@ const props = withDefaults(
     selectedId?: string | null
     playingId?: string | null
     flagged?: readonly string[]
+    /** Taps on empty staff become `staffTap`, for entering notes. */
+    editing?: boolean
   }>(),
-  { selectedId: null, playingId: null, flagged: () => [] },
+  { selectedId: null, playingId: null, flagged: () => [], editing: false },
 )
 
-const emit = defineEmits<{ select: [id: string | null] }>()
+export interface StaffTap {
+  measureIndex: number
+  /** Insert after this event, or at the start of the measure with `null`. */
+  afterId: string | null
+  /** Steps above the bottom staff line: 0 is E4 in treble. */
+  relative: number
+}
+
+const emit = defineEmits<{ select: [id: string | null]; staffTap: [tap: StaffTap] }>()
 
 const canvas = ref<HTMLDivElement | null>(null)
 const width = ref(0)
@@ -84,7 +94,27 @@ function onTap(event: MouseEvent) {
       best = hit.id
     }
   }
-  emit('select', best)
+  if (best || !props.editing) {
+    emit('select', best)
+    return
+  }
+  // An empty spot on a staff: a pitch, and where in the measure it goes.
+  const stave = layout.value.staves.find(
+    (s) =>
+      x >= s.x &&
+      x <= s.x + s.width &&
+      y >= s.bottomLineY - s.spacing * 7 &&
+      y <= s.bottomLineY + s.spacing * 3,
+  )
+  if (!stave) return
+  const before = layout.value.hits
+    .filter((h) => h.measureIndex === stave.measureIndex && h.x + h.width / 2 < x)
+    .sort((a, b) => a.x - b.x)
+  emit('staffTap', {
+    measureIndex: stave.measureIndex,
+    afterId: before.length ? before[before.length - 1].id : null,
+    relative: Math.round((stave.bottomLineY - y) / (stave.spacing / 2)),
+  })
 }
 
 /** Keep a note in view — while it plays, or after it is picked elsewhere. */
