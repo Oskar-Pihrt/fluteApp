@@ -1,15 +1,51 @@
-import type { CodeGrammar, Fingering } from '@/domain/fingering'
+import type { CodeParser, Fingering, FingeringSpec } from '@/domain/fingering'
 import type { InstrumentKey, KeyGroup, KeyId, Requirement } from '@/domain/keys'
 
-export type InstrumentId = 'flute' | 'altoSax' | 'tenorSax'
+/**
+ * Every instrument the app knows, in the order the catalog lists them. The
+ * lightweight description of each lives in `catalog.ts`; its keys, chart and
+ * fingerings are loaded only when the player uses it.
+ */
+export const INSTRUMENT_IDS = ['flute', 'altoSax', 'tenorSax'] as const
 
-export const INSTRUMENT_IDS: readonly InstrumentId[] = ['flute', 'altoSax', 'tenorSax']
+export type InstrumentId = (typeof INSTRUMENT_IDS)[number]
 
-/** Instruments that share keywork, fingerings and tone colour. */
+/** Instruments that share tone colour. */
 export type InstrumentFamily = 'flute' | 'sax'
+
+/** Headings the instrument picker groups the catalog under. */
+export type CatalogGroup = 'flutes' | 'saxophones'
+
+/**
+ * A lazily loaded bundle of keys, chart and fingerings. Several instruments
+ * can share one — every saxophone fingers the same way.
+ */
+export type DataModuleId = 'flute' | 'saxophone'
 
 /** The optional hardware the player has — see `Requirement`. */
 export type InstrumentConfig = readonly Requirement[]
+
+/**
+ * A piece of optional hardware the player tells the app about in Setup. A
+ * `choice` picks one of several builds (C or B footjoint); a `toggle` is a key
+ * or feature the instrument has or hasn't.
+ */
+export type InstrumentOption =
+  | {
+      kind: 'choice'
+      heading: string
+      choices: readonly { label: string; description: string; requirement: Requirement | null }[]
+      /** Index of the choice a new player starts with. */
+      default: number
+    }
+  | {
+      kind: 'toggle'
+      heading: string
+      requirement: Requirement
+      label: string
+      description: string
+      default: boolean
+    }
 
 /** A key is drawn from one or more primitives, all sharing its pressed state. */
 export type Part =
@@ -51,20 +87,34 @@ export interface ChartLayout {
   matchAnchor: { x: number; y: number }
 }
 
-export interface Instrument {
+/** Where a fingering table comes from, for the note in Setup. */
+export interface DataSource {
+  /** "Fingerings are transcribed from" — runs into the link. */
+  intro: string
+  /** "The Woodwind Fingering Guide" */
+  linkText: string
+  url: string
+  /** "basic charts for flute, octaves 1–3." — follows the link. */
+  outro: string
+}
+
+/**
+ * What the app knows about an instrument before loading it: enough to list it,
+ * switch to it, transpose for it and play its pitch.
+ */
+export interface InstrumentMeta {
   id: InstrumentId
-  /** "Transverse flute" — headings and the app subtitle. */
+  /** "Transverse flute" — headings, the switch menu and the app subtitle. */
   name: string
-  /** "Flute" — the switch. */
+  /** "Flute" — the closed switch, where space is tight. */
   shortName: string
   /** "flute" — mid-sentence, as in "not on this flute". */
   noun: string
   family: InstrumentFamily
-  keys: readonly InstrumentKey[]
-  exclusiveGroups: readonly KeyGroup[]
-  grammar: CodeGrammar
-  fingerings: readonly Fingering[]
-  chart: ChartLayout
+  group: CatalogGroup
+  dataModule: DataModuleId
+  /** Prepended to fingering ids, which saved sheets store. */
+  idPrefix: string
   /**
    * Semitones from written to sounding pitch. Everything the player sees is
    * written pitch; only audio and Hz readouts apply this.
@@ -74,6 +124,38 @@ export interface Instrument {
   registerNames: Readonly<Record<number, string>>
   /** Octave the note picker opens on. */
   defaultPickerOctave: number
+  /** Words that identify this instrument's part in a MusicXML score. */
+  musicXmlNames: readonly string[]
+  options: readonly InstrumentOption[]
+  /**
+   * Written range, lowest and highest note, with every option on. The data is
+   * the source of truth for the range; this is what a test holds it to.
+   */
+  expectedRange: readonly [string, string]
+}
+
+/** What a data module provides. Shared by every instrument that uses it. */
+export interface InstrumentData {
+  keys: readonly InstrumentKey[]
+  /**
+   * Canonical key order. Fingering ids are built in this order and saved
+   * sheets store them, so it must never change for an existing instrument.
+   */
+  keyOrder: readonly KeyId[]
+  exclusiveGroups: readonly KeyGroup[]
+  parse: CodeParser
+  specs: readonly FingeringSpec[]
+  chart: ChartLayout
+  /** What a partly closed key means here, e.g. "ring depressed, hole open". */
+  partialLabel: string
+  /** Hardware any partly closed key needs, if any. */
+  partialRequires?: Requirement
+  source: DataSource
+}
+
+/** A loaded instrument: its description, keywork, chart and fingerings. */
+export interface Instrument extends InstrumentMeta, Omit<InstrumentData, 'specs' | 'parse'> {
+  fingerings: readonly Fingering[]
 }
 
 /** Badge text for a fingering's requirements. */

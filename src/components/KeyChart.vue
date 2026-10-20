@@ -14,8 +14,8 @@ const props = withDefaults(
   defineProps<{
     /** Keys held down. */
     keys: readonly KeyId[]
-    /** Keys whose ring is depressed but tone hole left open (open-hole flutes). */
-    vented?: readonly KeyId[]
+    /** Keys only partly closed — what that means is the instrument's `partialLabel`. */
+    partial?: readonly KeyId[]
     interactive?: boolean
     /** Keys the current instrument doesn't have — shown faint and untappable. */
     unavailable?: readonly KeyId[]
@@ -23,7 +23,7 @@ const props = withDefaults(
     /** Defaults to the active instrument. */
     instrument?: Instrument
   }>(),
-  { vented: () => [], interactive: false, unavailable: () => [], size: 'md', instrument: undefined },
+  { partial: () => [], interactive: false, unavailable: () => [], size: 'md', instrument: undefined },
 )
 
 const emit = defineEmits<{ 'update:keys': [KeyId[]] }>()
@@ -46,15 +46,15 @@ const exclusiveSets = computed(() =>
 )
 
 const pressedSet = computed(() => new Set(props.keys))
-const ventedSet = computed(() => new Set(props.vented))
+const partialSet = computed(() => new Set(props.partial))
 const unavailableSet = computed(() => new Set(props.unavailable))
 
-type State = 'pressed' | 'vented' | 'open' | 'unavailable'
+type State = 'pressed' | 'partial' | 'open' | 'unavailable'
 
 function stateOf(key: KeyId): State {
   if (unavailableSet.value.has(key)) return 'unavailable'
   if (pressedSet.value.has(key)) return 'pressed'
-  if (ventedSet.value.has(key)) return 'vented'
+  if (partialSet.value.has(key)) return 'partial'
   return 'open'
 }
 
@@ -69,7 +69,7 @@ function toggle(key: InstrumentKey) {
     }
     next.add(key.id)
   }
-  emit('update:keys', sortKeys([...next]))
+  emit('update:keys', sortKeys([...next], instrument.value.keyOrder))
 }
 
 /**
@@ -79,7 +79,7 @@ function toggle(key: InstrumentKey) {
 function ariaLabel(key: InstrumentKey): string {
   const suffix = {
     pressed: 'pressed',
-    vented: 'ring depressed, hole open',
+    partial: instrument.value.partialLabel,
     unavailable: `not on this ${instrument.value.noun}`,
     open: 'open',
   }[stateOf(key.id)]
@@ -168,7 +168,7 @@ function ariaLabel(key: InstrumentKey): string {
            when it applies, so a normal fingering shows plain keys as on the
            printed chart. -->
       <circle
-        v-if="stateOf(key.id) === 'vented' && drawing.ring"
+        v-if="stateOf(key.id) === 'partial' && drawing.ring"
         :cx="drawing.ring.cx"
         :cy="drawing.ring.cy"
         :r="drawing.ring.r * 0.5"
@@ -244,13 +244,13 @@ function ariaLabel(key: InstrumentKey): string {
 
 /* ── Pressed ──────────────────────────────────────────────────────────── */
 .key--pressed .key-shape,
-.key--vented .key-shape {
+.key--partial .key-shape {
   fill: var(--color-accent-400);
   stroke: var(--color-accent-300);
 }
 
 .key--pressed .key-arm,
-.key--vented .key-arm {
+.key--partial .key-arm {
   stroke: var(--color-accent-400);
 }
 

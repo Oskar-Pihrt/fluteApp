@@ -4,9 +4,9 @@ import { RouterLink, useRouter } from 'vue-router'
 import { createBlobUrl, revokeBlobUrl } from '@/data/images'
 import { transposeBy } from '@/domain/lookup'
 import { type MusicXmlPart, parseMusicXml, readMxl } from '@/domain/musicxml'
-import { INSTRUMENT_IDS, INSTRUMENTS } from '@/instruments'
+import { CATALOG, type InstrumentId } from '@/instruments'
 import { useSettingsStore } from '@/stores/settings'
-import { useSheetsStore } from '@/stores/sheets'
+import { sheetInstrument, useSheetsStore } from '@/stores/sheets'
 
 /** Feature 3, library — the grid of saved sheet music. */
 
@@ -16,17 +16,17 @@ const settings = useSettingsStore()
 
 /** A sheet belongs to the instrument it was made for; older sheets are flute. */
 const visible = computed(() =>
-  store.sheets.filter((sheet) => (sheet.instrument ?? 'flute') === settings.instrumentId),
+  store.sheets.filter((sheet) => sheetInstrument(sheet) === settings.instrumentId),
 )
 const hiddenCount = computed(() => store.sheets.length - visible.value.length)
 /** Nouns of the instruments the hidden sheets belong to, e.g. "flute and tenor sax". */
 const hiddenInstruments = computed(() => {
   const ids = new Set(
     store.sheets
-      .map((sheet) => sheet.instrument ?? 'flute')
+      .map(sheetInstrument)
       .filter((id) => id !== settings.instrumentId),
   )
-  const nouns = INSTRUMENT_IDS.filter((id) => ids.has(id)).map((id) => INSTRUMENTS[id].noun)
+  const nouns = (Object.keys(CATALOG) as InstrumentId[]).filter((id) => ids.has(id)).map((id) => CATALOG[id].noun)
   return nouns.length > 1 ? `${nouns.slice(0, -1).join(', ')} and ${nouns[nouns.length - 1]}` : nouns[0] ?? ''
 })
 
@@ -80,7 +80,7 @@ const xmlInput = ref<HTMLInputElement | null>(null)
 /** The part to import: the only one, one named for the instrument, or the player's pick. */
 function choosePart(parts: MusicXmlPart[]): MusicXmlPart | null {
   if (parts.length === 1) return parts[0]
-  const words = [settings.instrument.noun, settings.instrument.shortName, settings.instrument.family === 'sax' ? 'sax' : 'flute']
+  const words = settings.instrument.musicXmlNames
   const named = parts.filter((part) => words.some((word) => part.name.toLowerCase().includes(word.toLowerCase())))
   if (named.length === 1) return named[0]
   const list = parts.map((part, i) => `${i + 1}. ${part.name} (${part.notes.length} notes)`).join('\n')

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { Note } from 'tonal'
-import { ALTO_SAX, FLUTE, TENOR_SAX } from '@/instruments'
+import { loadInstrument } from '@/instruments'
 import { FLUTE_GRAMMAR } from '@/instruments/flute/fingerings'
+import { FLUTE_KEY_IDS } from '@/instruments/flute/keys'
 import { parseFingeringCode as parse } from './fingering'
 import {
   fingeringsForNote,
@@ -13,23 +14,27 @@ import {
   transposeBetween,
 } from './lookup'
 
+const FLUTE = await loadInstrument('flute')
+const ALTO_SAX = await loadInstrument('altoSax')
+const TENOR_SAX = await loadInstrument('tenorSax')
+
 const C_FOOT = { instrument: FLUTE, config: [] } as const
 const B_FOOT = { instrument: FLUTE, config: ['bFoot'] } as const
 const SAX = { instrument: TENOR_SAX, config: ['highFSharp'] } as const
 const SAX_NO_HIGH_F = { instrument: TENOR_SAX, config: [] } as const
 
-const parseFingeringCode = (code: string) => parse(code, FLUTE_GRAMMAR)
+const parseFingeringCode = (code: string) => parse(code, FLUTE_GRAMMAR, FLUTE_KEY_IDS)
 
 describe('parseFingeringCode', () => {
   it('reads a full fingering', () => {
     expect(parseFingeringCode('T 123 G# | 123 Eb')).toEqual({
       keys: ['THUMB_B', 'L1', 'L2', 'L3', 'L_GSHARP', 'R1', 'R2', 'R3', 'R_EFLAT'],
-      vented: [],
+      partial: [],
     })
   })
 
   it('reads an all-open fingering', () => {
-    expect(parseFingeringCode('- --- | --- Eb')).toEqual({ keys: ['R_EFLAT'], vented: [] })
+    expect(parseFingeringCode('- --- | --- Eb')).toEqual({ keys: ['R_EFLAT'], partial: [] })
   })
 
   it('treats B in the thumb slot as the B-natural lever, not the foot key', () => {
@@ -40,10 +45,10 @@ describe('parseFingeringCode', () => {
     expect(parseFingeringCode('T 123 | 123 B').keys).toContain('FOOT_B')
   })
 
-  it('records a 0 position as vented rather than pressed', () => {
+  it('records a 0 position as partial rather than pressed', () => {
     const parsed = parseFingeringCode('T 1-0 | --- Eb')
     expect(parsed.keys).toEqual(['THUMB_B', 'L1', 'R_EFLAT'])
-    expect(parsed.vented).toEqual(['L3'])
+    expect(parsed.partial).toEqual(['L3'])
   })
 
   it('rejects a digit in the wrong position', () => {
@@ -56,6 +61,33 @@ describe('parseFingeringCode', () => {
 
   it('rejects a code without a hand separator', () => {
     expect(() => parseFingeringCode('T 123 123 Eb')).toThrow(/separator/)
+  })
+
+  // A whistle-like grammar: no thumb, four holes under the right hand.
+  const HOLES = {
+    leftStack: ['H1', 'H2', 'H3'],
+    rightStack: ['H4', 'H5', 'H6', 'H7'],
+    leftAux: {},
+    rightAux: {},
+  }
+  const ORDER = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7']
+
+  it('reads a code with no thumb and a four-hole group', () => {
+    expect(parse('12- | 1234', HOLES, ORDER)).toEqual({
+      keys: ['H1', 'H2', 'H4', 'H5', 'H6', 'H7'],
+      partial: [],
+    })
+  })
+
+  it('records an h position as a half-covered hole', () => {
+    expect(parse('123 | 12h-', HOLES, ORDER)).toEqual({
+      keys: ['H1', 'H2', 'H3', 'H4', 'H5'],
+      partial: ['H6'],
+    })
+  })
+
+  it('rejects a group of the wrong length', () => {
+    expect(() => parse('123 | 123', HOLES, ORDER)).toThrow(/4 positions/)
   })
 })
 

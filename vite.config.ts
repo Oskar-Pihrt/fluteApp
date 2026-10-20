@@ -12,9 +12,22 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
-      // The ear trainer's piano samples (~1 MB) are precached so it works offline.
-      // The note detector's network (~0.3 MB) too, so detection works offline.
-      workbox: { globPatterns: ['**/*.{js,css,html,svg,png,m4a,woff2,woff}', 'omr/detector.{json,bin}'] },
+      workbox: {
+        // The ear trainer's piano samples (~1 MB) are precached so it works offline.
+        // The note detector's network (~0.3 MB) too, so detection works offline.
+        globPatterns: ['**/*.{js,css,html,svg,png,m4a,woff2,woff}', 'omr/detector.{json,bin}'],
+        // Instrument data is not: a player downloads only the instruments they
+        // chose, and each is cached on first fetch instead. The app keeps that
+        // cache in step with their choice — src/platform/instrumentCache.ts.
+        globIgnores: ['**/instrument-*.js'],
+        runtimeCaching: [
+          {
+            urlPattern: /\/assets\/instrument-[^/]+\.js$/,
+            handler: 'CacheFirst',
+            options: { cacheName: 'fluteapp-instruments' },
+          },
+        ],
+      },
       manifest: {
         name: 'FluteApp — transverse flute fingerings',
         short_name: 'FluteApp',
@@ -34,6 +47,18 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        // One recognisable chunk per instrument data module, so the service
+        // worker can leave them out of the precache (see `globIgnores`).
+        chunkFileNames: (chunk) => {
+          const module = /\/src\/instruments\/(\w+)\/data\.ts$/.exec(chunk.facadeModuleId ?? '')?.[1]
+          return module ? `assets/instrument-${module}-[hash].js` : 'assets/[name]-[hash].js'
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

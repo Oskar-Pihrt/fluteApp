@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { db, newId, type Sheet, type SheetNote } from '@/data/db'
 import { blobToBase64, base64ToBlob, prepareImage } from '@/data/images'
 import { transposeBetween } from '@/domain/lookup'
-import { getInstrument } from '@/instruments'
+import { isInstrumentId, loadInstrument } from '@/instruments'
 import type { InstrumentId } from '@/instruments/types'
 
 /**
@@ -13,6 +13,15 @@ import type { InstrumentId } from '@/instruments/types'
  * automatic recogniser added later can bulk-insert suggestions into exactly the
  * same shape the manual editor writes.
  */
+/**
+ * The instrument a sheet is written for. Absent means the flute, the only
+ * instrument older sheets could have been made for; an id this version doesn't
+ * know (a backup from a newer one) falls back to it too.
+ */
+export function sheetInstrument(sheet: Pick<Sheet, 'instrument'>): InstrumentId {
+  return isInstrumentId(sheet.instrument) ? sheet.instrument : 'flute'
+}
+
 export const useSheetsStore = defineStore('sheets', () => {
   const sheets = ref<Sheet[]>([])
   const loading = ref(false)
@@ -93,8 +102,8 @@ export const useSheetsStore = defineStore('sheets', () => {
   async function convertInstrument(sheetId: string, to: InstrumentId) {
     const sheet = await db.sheets.get(sheetId)
     if (!sheet) return
-    const from = getInstrument(sheet.instrument)
-    const target = getInstrument(to)
+    const from = await loadInstrument(sheetInstrument(sheet))
+    const target = await loadInstrument(to)
     const notes = await notesFor(sheetId)
     await db.transaction('rw', db.sheets, db.sheetNotes, async () => {
       for (const row of notes) {

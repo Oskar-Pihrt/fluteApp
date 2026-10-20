@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { Note } from 'tonal'
 import { keySetId, keysInGroup } from '@/domain/keys'
-import { type Instrument, INSTRUMENTS } from '@/instruments'
+import { CATALOG, type InstrumentId, loadInstrument } from '@/instruments'
+import SAVED_IDS from './__fixtures__/saved-fingering-ids.json'
 
 /**
  * Guards on the fingering databases. These catch transcription slips — the
@@ -9,15 +10,12 @@ import { type Instrument, INSTRUMENTS } from '@/instruments'
  * plausible to anyone who can't already play the note.
  */
 
-/** Written range each instrument's data is meant to cover. */
-const RANGES: Record<Instrument['id'], [string, string]> = {
-  flute: ['B3', 'C7'],
-  altoSax: ['A#3', 'F#6'],
-  tenorSax: ['A#3', 'F#6'],
-}
+const INSTRUMENTS = Object.fromEntries(
+  await Promise.all((Object.keys(CATALOG) as InstrumentId[]).map(async (id) => [id, await loadInstrument(id)])),
+) as Record<InstrumentId, Awaited<ReturnType<typeof loadInstrument>>>
 
 describe.each(Object.values(INSTRUMENTS))('$name fingering database', (instrument) => {
-  const [low, high] = RANGES[instrument.id].map((n) => Note.midi(n)!)
+  const [low, high] = instrument.expectedRange.map((n) => Note.midi(n)!)
   const fingerings = instrument.fingerings
 
   it('covers every chromatic note in its range', () => {
@@ -85,6 +83,10 @@ describe.each(Object.values(INSTRUMENTS))('$name fingering database', (instrumen
     }
   })
 
+  it('lists every key in its canonical order exactly once', () => {
+    expect([...instrument.keyOrder].sort()).toEqual(instrument.keys.map((k) => k.id).sort())
+  })
+
   it('draws every key', () => {
     const undrawn = instrument.keys.filter((k) => !instrument.chart.drawings[k.id]).map((k) => k.id)
     expect(undrawn).toEqual([])
@@ -117,5 +119,14 @@ describe('saxophone family', () => {
   it('keeps fingering ids unique across instruments', () => {
     const ids = Object.values(INSTRUMENTS).flatMap((i) => i.fingerings.map((f) => f.id))
     expect(new Set(ids).size).toBe(ids.length)
+  })
+})
+
+describe('saved sheets', () => {
+  // Sheets store `chosenFingeringId`. Ids from before the instrument registry
+  // must still resolve, or a player's chosen alternates silently revert.
+  it('still recognise every fingering id they could have stored', () => {
+    const ids = new Set(Object.values(INSTRUMENTS).flatMap((i) => i.fingerings.map((f) => f.id)))
+    expect((SAVED_IDS as string[]).filter((id) => !ids.has(id))).toEqual([])
   })
 })

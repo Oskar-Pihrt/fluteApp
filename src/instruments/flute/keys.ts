@@ -28,6 +28,8 @@ export const FLUTE_KEY_IDS = [
   'GIZMO',
 ] as const
 
+export type FluteKeyId = (typeof FLUTE_KEY_IDS)[number]
+
 export const FLUTE_KEYS: readonly InstrumentKey[] = [
   {
     id: 'THUMB_B',

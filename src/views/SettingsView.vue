@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import InstrumentPicker from '@/components/InstrumentPicker.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSheetsStore } from '@/stores/sheets'
 
@@ -70,65 +71,57 @@ async function onImport(event: Event) {
       </p>
     </header>
 
-    <template v-if="settings.instrumentId === 'flute'">
-    <section class="space-y-3">
-      <h2 class="text-xs font-semibold uppercase tracking-wider text-ink-400">Footjoint</h2>
-      <div class="grid grid-cols-2 gap-2">
+    <section id="instruments" class="scroll-mt-20 space-y-3">
+      <h2 class="text-xs font-semibold uppercase tracking-wider text-ink-400">Instruments</h2>
+      <p class="text-xs leading-relaxed text-ink-400">
+        The ones you play, for the switch at the top. Only these are downloaded to this device.
+      </p>
+      <InstrumentPicker
+        :selected="settings.visibleInstruments"
+        @toggle="(id, on) => settings.setVisible(id, on)"
+      />
+    </section>
+
+    <section v-for="option in settings.instrument.options" :key="option.heading" class="space-y-3">
+      <h2 class="text-xs font-semibold uppercase tracking-wider text-ink-400">
+        {{ option.heading }} · {{ settings.instrument.shortName }}
+      </h2>
+      <div v-if="option.kind === 'choice'" class="grid grid-cols-2 gap-2">
         <button
-          v-for="option in (['C', 'B'] as const)"
-          :key="option"
+          v-for="(choice, index) in option.choices"
+          :key="choice.label"
           type="button"
           class="rounded-xl border px-4 py-3 text-left transition-colors"
           :class="
-            settings.footJoint === option
+            settings.choiceIndex(settings.instrumentId, option) === index
               ? 'border-accent-400 bg-ink-800'
               : 'border-ink-700 hover:border-ink-400'
           "
-          @click="settings.footJoint = option"
+          @click="settings.setChoice(settings.instrumentId, option, index)"
         >
-          <span class="block text-sm font-semibold text-ink-50">{{ option }} foot</span>
-          <span class="mt-0.5 block text-xs text-ink-400">
-            {{ option === 'C' ? 'Lowest note C4' : 'Lowest note B3, plus gizmo key' }}
-          </span>
+          <span class="block text-sm font-semibold text-ink-50">{{ choice.label }}</span>
+          <span class="mt-0.5 block text-xs text-ink-400">{{ choice.description }}</span>
         </button>
       </div>
-    </section>
-
-    <section class="space-y-3">
-      <h2 class="text-xs font-semibold uppercase tracking-wider text-ink-400">Holes</h2>
       <label
+        v-else
         class="flex cursor-pointer items-start gap-3 rounded-xl border border-ink-700 px-4 py-3 transition-colors hover:border-ink-400"
       >
         <input
-          v-model="settings.openHole"
           type="checkbox"
           class="mt-0.5 h-4 w-4 shrink-0 accent-accent-400"
+          :checked="settings.hasRequirement(settings.instrumentId, option.requirement)"
+          @change="
+            settings.setRequirement(
+              settings.instrumentId,
+              option.requirement,
+              ($event.target as HTMLInputElement).checked,
+            )
+          "
         />
         <span>
-          <span class="block text-sm font-semibold text-ink-50">Open hole (French)</span>
-          <span class="mt-0.5 block text-xs text-ink-400">
-            Unlocks fingerings that need a partly uncovered tone hole.
-          </span>
-        </span>
-      </label>
-    </section>
-    </template>
-
-    <section v-else class="space-y-3">
-      <h2 class="text-xs font-semibold uppercase tracking-wider text-ink-400">Keys</h2>
-      <label
-        class="flex cursor-pointer items-start gap-3 rounded-xl border border-ink-700 px-4 py-3 transition-colors hover:border-ink-400"
-      >
-        <input
-          v-model="settings.saxHighFSharp"
-          type="checkbox"
-          class="mt-0.5 h-4 w-4 shrink-0 accent-accent-400"
-        />
-        <span>
-          <span class="block text-sm font-semibold text-ink-50">High F♯ key</span>
-          <span class="mt-0.5 block text-xs text-ink-400">
-            Adds the top F♯ (written F♯6) that needs the C5 key.
-          </span>
+          <span class="block text-sm font-semibold text-ink-50">{{ option.label }}</span>
+          <span class="mt-0.5 block text-xs text-ink-400">{{ option.description }}</span>
         </span>
       </label>
     </section>
@@ -199,19 +192,15 @@ async function onImport(event: Event) {
     <section class="space-y-2 border-t border-ink-800 pt-5">
       <h2 class="text-xs font-semibold uppercase tracking-wider text-ink-400">Fingering data</h2>
       <p class="text-xs leading-relaxed text-ink-400">
-        {{ settings.instrumentId === 'flute' ? 'Fingerings are transcribed from' : 'Fingerings follow the standard charts; compare with' }}
+        {{ settings.instrument.source.intro }}
         <a
-          :href="
-            settings.instrumentId === 'flute'
-              ? 'https://www.wfg.woodwind.org/flute/'
-              : 'https://www.wfg.woodwind.org/sax/'
-          "
+          :href="settings.instrument.source.url"
           target="_blank"
           rel="noreferrer"
           class="text-accent-400"
-          >The Woodwind Fingering Guide</a
+          >{{ settings.instrument.source.linkText }}</a
         >
-        basic charts for {{ settings.instrumentId === 'flute' ? 'flute, octaves 1–3' : 'saxophone' }}.
+        {{ settings.instrument.source.outro }}
         Entries flagged
         <span class="text-amber-200">Needs checking</span> in the note library had an ambiguous
         source and are worth confirming against your own playing.

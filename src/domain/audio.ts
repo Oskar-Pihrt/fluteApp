@@ -1,4 +1,4 @@
-import type { Instrument } from '@/instruments/types'
+import type { Instrument, InstrumentFamily } from '@/instruments/types'
 import { noteFrequency } from './lookup'
 
 /**
@@ -10,6 +10,12 @@ import { noteFrequency } from './lookup'
  * written pitch; they are played at the instrument's sounding pitch. Bundling real samples would cost tens of megabytes for a feature
  * that only needs to answer "is this the right note?".
  */
+
+/** Which of the two synth voices each family gets. */
+const TIMBRE: Record<InstrumentFamily, 'reedy' | 'pure'> = {
+  flute: 'pure',
+  sax: 'reedy',
+}
 
 let ctx: AudioContext | null = null
 
@@ -39,9 +45,10 @@ export function playNote(note: string, instrument: Instrument, durationSeconds =
   const gain = context.createGain()
 
   osc.frequency.value = frequency
-  // Reedier tone for the sax: harmonic-rich sawtooth, tamed by a lowpass.
+  // Reedier tone for reeds and brass: harmonic-rich sawtooth, tamed by a
+  // lowpass. Flutes and their kin get a plain triangle.
   let source: AudioNode = osc
-  if (instrument.family === 'sax') {
+  if (TIMBRE[instrument.family] === 'reedy') {
     osc.type = 'sawtooth'
     const filter = context.createBiquadFilter()
     filter.type = 'lowpass'

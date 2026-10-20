@@ -92,16 +92,12 @@ function octaveOf(note: string): number {
     </section>
 
     <p class="rounded-xl border border-ink-800 px-4 py-3 text-xs leading-relaxed text-ink-400">
-      <template v-if="settings.instrumentId === 'flute'">
-        Showing the range for a
-        <strong class="text-ink-200">{{ settings.footJoint }} footjoint</strong>
-        flute. Change it in
-        <RouterLink :to="{ name: 'settings' }" class="text-accent-400">Setup</RouterLink>
-        to include low B and the gizmo key.
-      </template>
-      <template v-else>
+      <template v-if="settings.instrument.transposeSemitones">
         Notes are shown in written pitch, as you read them.
-        <strong class="text-ink-200">High F♯ key {{ settings.saxHighFSharp ? 'on' : 'off' }}</strong
+      </template>
+      <template v-if="settings.instrument.options.length">
+        Showing the range for your setup:
+        <strong class="text-ink-200">{{ settings.setupSummary(settings.instrumentId) }}</strong
         >. Change it in
         <RouterLink :to="{ name: 'settings' }" class="text-accent-400">Setup</RouterLink>.
       </template>

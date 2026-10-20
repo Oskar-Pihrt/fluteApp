@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { noteRange } from '@/domain/lookup'
-import { FLUTE } from '@/instruments'
+import { loadInstrument } from '@/instruments'
 import { recognise } from './recognise'
 import { renderScore, simplePhrase } from './testing/render'
 import { createBitmap } from './bitmap'
+
+const FLUTE = await loadInstrument('flute')
 
 const PLAYABLE = noteRange({ instrument: FLUTE, config: ['bFoot'] }).map((entry) => entry.note)
 
