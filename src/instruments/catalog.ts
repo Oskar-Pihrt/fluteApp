@@ -11,6 +11,8 @@ import type { CatalogGroup, InstrumentId, InstrumentMeta, InstrumentOption } fro
 export const CATALOG_GROUPS: readonly { id: CatalogGroup; label: string }[] = [
   { id: 'flutes', label: 'Flutes' },
   { id: 'saxophones', label: 'Saxophones' },
+  { id: 'clarinets', label: 'Clarinets' },
+  { id: 'doubleReeds', label: 'Oboes' },
 ]
 
 const FLUTE_OPTIONS: readonly InstrumentOption[] = [
@@ -110,6 +112,124 @@ function fluteRelative({ writtenRange, ...spec }: FluteSpec): InstrumentMeta {
     idPrefix: `${spec.id}:`,
     defaultPickerOctave: 5,
     options: [],
+    writtenRange,
+    expectedRange: writtenRange,
+  }
+}
+
+type ClarinetSpec = Pick<InstrumentMeta, 'id' | 'name' | 'shortName' | 'noun' | 'transposeSemitones' | 'musicXmlNames'> & {
+  system: 'boehm' | 'oehler'
+  /** How far down it reaches: the soprano clarinets' E, the alto's E♭, or low C. */
+  bottom?: 'E' | 'Eb' | 'C'
+}
+
+const LOW_KEYS = ['LOW_EB', 'LOW_D', 'LOW_CSHARP', 'LOW_C']
+
+/**
+ * Clarinets of one system finger alike in every size; they differ in how
+ * they transpose and how far down they reach. The low clarinets stop at the
+ * top of the clarion: their altissimo needs half-hole fingerings this data
+ * doesn't have.
+ */
+function clarinet({ system, bottom = 'E', ...spec }: ClarinetSpec): InstrumentMeta {
+  const low = bottom === 'E' ? 'E3' : bottom === 'Eb' ? 'D#3' : 'C3'
+  const high = bottom === 'E' ? 'C7' : 'C6'
+  const extraKeys: InstrumentOption[] = [
+    {
+      kind: 'toggle',
+      heading: 'Keys',
+      requirement: 'leftAb',
+      label: 'Left A♭/E♭ key',
+      description: 'A fifth key for the left little finger, on some professional models.',
+      default: false,
+    },
+    ...(system === 'oehler'
+      ? [
+          {
+            kind: 'toggle',
+            heading: 'Keys',
+            requirement: 'leftBb',
+            label: 'Left B♭/F key',
+            description: 'The extra left little finger key some Oehler clarinets have.',
+            default: false,
+          } as const,
+        ]
+      : []),
+    ...(bottom === 'C'
+      ? [
+          {
+            kind: 'toggle',
+            heading: 'Low keys',
+            requirement: 'lowC',
+            label: 'Low C extension',
+            description: 'Low D, C♯ and C keys, down to written C.',
+            default: true,
+          } as const,
+        ]
+      : []),
+  ]
+  return {
+    ...spec,
+    family: 'clarinet',
+    group: 'clarinets',
+    dataModule: system === 'boehm' ? 'clarinetBoehm' : 'clarinetOehler',
+    idPrefix: `${spec.id}:`,
+    registerNames: { 3: 'Chalumeau', 4: 'Chalumeau and throat', 5: 'Clarion', 6: 'Altissimo', 7: 'Altissimo' },
+    defaultPickerOctave: 4,
+    options: extraKeys,
+    omitKeys: system === 'oehler' ? [] : bottom === 'E' ? LOW_KEYS : bottom === 'Eb' ? LOW_KEYS.slice(1) : [],
+    writtenRange: [low, high],
+    expectedRange: [low, high],
+  }
+}
+
+type OboeSpec = Pick<InstrumentMeta, 'id' | 'name' | 'shortName' | 'noun' | 'transposeSemitones' | 'musicXmlNames'> & {
+  writtenRange: readonly [string, string]
+  /** The oboe d'amore has no low B♭ key. */
+  lowBb: boolean
+}
+
+/** The oboe and its larger relatives finger alike; they differ in pitch and range. */
+function oboe({ writtenRange, lowBb, ...spec }: OboeSpec): InstrumentMeta {
+  return {
+    ...spec,
+    family: 'oboe',
+    group: 'doubleReeds',
+    dataModule: 'oboe',
+    idPrefix: `${spec.id}:`,
+    registerNames: { 3: 'Low register', 4: 'Low register', 5: 'Second octave', 6: 'Third octave' },
+    defaultPickerOctave: 4,
+    options: [
+      ...(lowBb
+        ? [
+            {
+              kind: 'toggle',
+              heading: 'Keys',
+              requirement: 'lowBb',
+              label: 'Low B♭ key',
+              description: 'The bottom note, B♭3. Some student models lack it.',
+              default: true,
+            } as const,
+          ]
+        : []),
+      {
+        kind: 'toggle',
+        heading: 'Keys',
+        requirement: 'leftF',
+        label: 'Left F key',
+        description: 'The left little-finger F, on most full conservatoire oboes.',
+        default: true,
+      },
+      {
+        kind: 'toggle',
+        heading: 'Keys',
+        requirement: 'thirdOctaveKey',
+        label: 'Third octave key',
+        description: 'A second thumb octave key for some third-octave fingerings.',
+        default: false,
+      },
+    ],
+    omitKeys: lowBb ? [] : ['L_BB'],
     writtenRange,
     expectedRange: writtenRange,
   }
@@ -235,6 +355,128 @@ export const CATALOG: Record<InstrumentId, InstrumentMeta> = {
     transposeSemitones: -26,
     highFSharpByDefault: false,
     musicXmlNames: ['bass sax', 'bass saxophone', 'basssax'],
+  }),
+  clarinetEb: clarinet({
+    id: 'clarinetEb',
+    name: 'E♭ clarinet (Boehm)',
+    shortName: 'E♭ clarinet',
+    noun: 'E♭ clarinet',
+    system: 'boehm',
+    // Sounds a minor third above written.
+    transposeSemitones: 3,
+    musicXmlNames: ['e-flat clarinet', 'eb clarinet', 'clarinet in e', 'es-klarinette'],
+  }),
+  clarinetBb: clarinet({
+    id: 'clarinetBb',
+    name: 'B♭ clarinet (Boehm)',
+    shortName: 'Clarinet',
+    noun: 'clarinet',
+    system: 'boehm',
+    // Sounds a tone below written.
+    transposeSemitones: -2,
+    musicXmlNames: ['clarinet', 'klarinette', 'clarinetto', 'clarinette'],
+  }),
+  clarinetA: clarinet({
+    id: 'clarinetA',
+    name: 'A clarinet (Boehm)',
+    shortName: 'A clarinet',
+    noun: 'A clarinet',
+    system: 'boehm',
+    // Sounds a minor third below written.
+    transposeSemitones: -3,
+    musicXmlNames: ['clarinet in a', 'a clarinet', 'klarinette in a'],
+  }),
+  bassetHorn: clarinet({
+    id: 'bassetHorn',
+    name: 'Basset horn',
+    shortName: 'Basset horn',
+    noun: 'basset horn',
+    system: 'boehm',
+    bottom: 'C',
+    // In F: sounds a fifth below written.
+    transposeSemitones: -7,
+    musicXmlNames: ['basset horn', 'bassetthorn', 'corno di bassetto'],
+  }),
+  altoClarinet: clarinet({
+    id: 'altoClarinet',
+    name: 'Alto clarinet',
+    shortName: 'Alto clarinet',
+    noun: 'alto clarinet',
+    system: 'boehm',
+    bottom: 'Eb',
+    // In E♭, a major sixth below written.
+    transposeSemitones: -9,
+    musicXmlNames: ['alto clarinet', 'altklarinette'],
+  }),
+  bassClarinet: clarinet({
+    id: 'bassClarinet',
+    name: 'Bass clarinet',
+    shortName: 'Bass clarinet',
+    noun: 'bass clarinet',
+    system: 'boehm',
+    bottom: 'C',
+    // In B♭, written in treble clef a major ninth above sounding.
+    transposeSemitones: -14,
+    musicXmlNames: ['bass clarinet', 'bassklarinette', 'clarinetto basso'],
+  }),
+  clarinetEbOehler: clarinet({
+    id: 'clarinetEbOehler',
+    name: 'E♭ clarinet (Oehler)',
+    shortName: 'E♭ clarinet',
+    noun: 'E♭ clarinet',
+    system: 'oehler',
+    transposeSemitones: 3,
+    musicXmlNames: ['e-flat clarinet', 'eb clarinet', 'es-klarinette'],
+  }),
+  clarinetBbOehler: clarinet({
+    id: 'clarinetBbOehler',
+    name: 'B♭ clarinet (Oehler)',
+    shortName: 'Clarinet',
+    noun: 'clarinet',
+    system: 'oehler',
+    transposeSemitones: -2,
+    musicXmlNames: ['clarinet', 'klarinette', 'clarinetto'],
+  }),
+  clarinetAOehler: clarinet({
+    id: 'clarinetAOehler',
+    name: 'A clarinet (Oehler)',
+    shortName: 'A clarinet',
+    noun: 'A clarinet',
+    system: 'oehler',
+    transposeSemitones: -3,
+    musicXmlNames: ['clarinet in a', 'a clarinet', 'klarinette in a'],
+  }),
+  oboe: oboe({
+    id: 'oboe',
+    name: 'Oboe',
+    shortName: 'Oboe',
+    noun: 'oboe',
+    transposeSemitones: 0,
+    writtenRange: ['A#3', 'A6'],
+    lowBb: true,
+    musicXmlNames: ['oboe', 'hautbois', 'oboa'],
+  }),
+  oboeDamore: oboe({
+    id: 'oboeDamore',
+    name: 'Oboe d’amore',
+    shortName: 'Oboe d’amore',
+    noun: 'oboe d’amore',
+    // In A: sounds a minor third below written.
+    transposeSemitones: -3,
+    writtenRange: ['B3', 'E6'],
+    lowBb: false,
+    musicXmlNames: ["oboe d'amore", 'oboe d’amore', 'oboe damore'],
+  }),
+  englishHorn: oboe({
+    id: 'englishHorn',
+    name: 'English horn',
+    shortName: 'English horn',
+    noun: 'English horn',
+    // In F: sounds a fifth below written.
+    transposeSemitones: -7,
+    writtenRange: ['A#3', 'G6'],
+    lowBb: true,
+    musicXmlNames: ['english horn', 'cor anglais', 'corno inglese', 'englischhorn'],
   }),
 }
 

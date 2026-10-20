@@ -24,6 +24,11 @@ interface LoadedModule {
 const DATA_MODULES: Record<DataModuleId, () => Promise<LoadedModule>> = {
   flute: () => import('./flute/data').then((m) => ({ data: m.FLUTE_DATA, url: m.MODULE_URL })),
   saxophone: () => import('./saxophone/data').then((m) => ({ data: m.SAX_DATA, url: m.MODULE_URL })),
+  clarinetBoehm: () =>
+    import('./clarinetBoehm/data').then((m) => ({ data: m.CLARINET_BOEHM_DATA, url: m.MODULE_URL })),
+  clarinetOehler: () =>
+    import('./clarinetOehler/data').then((m) => ({ data: m.CLARINET_OEHLER_DATA, url: m.MODULE_URL })),
+  oboe: () => import('./oboe/data').then((m) => ({ data: m.OBOE_DATA, url: m.MODULE_URL })),
 }
 
 export type LoadStatus = 'loading' | 'ready' | 'error'

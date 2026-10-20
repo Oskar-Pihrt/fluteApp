@@ -1,0 +1,131 @@
+import type { CodeGrammar, FingeringSpec } from '@/domain/fingering'
+
+/**
+ * Fingering database for the Oehler-system (German) clarinet, in written
+ * pitch. Every size fingers alike; the catalog sets how each transposes.
+ *
+ * Source: The Woodwind Fingering Guide, basic fingering charts for
+ * Oehler-system clarinet (chalumeau, clarion, lower altissimo), E3–G6,
+ * https://www.wfg.woodwind.org/clarinet/ — and G♯6–C7 from its upper
+ * altissimo alternate chart. `GENERATED` below was converted from the
+ * charts' key images, so each entry is the chart's fingering exactly; the
+ * first fingering the chart gives for a note is the primary.
+ *
+ * Codes follow the WFG text notation:
+ *
+ *   thumb      T (thumb hole), RT (register key + thumb hole),
+ *              R (register key, thumb hole open), - (nothing)
+ *   left aux   A (throat A), sG# (side G♯), F (F/C sliver), Eb (E♭/B♭ sliver),
+ *              C#, E, F#, Bb, G# (left pinky)
+ *   right aux  S1–S4 (side keys), Bb (B♭/F sliver), G#, F (right pinky)
+ */
+export const CLARINET_OEHLER_GRAMMAR: CodeGrammar = {
+  thumb: { T: 'THUMB', RT: ['REGISTER', 'THUMB'], R: 'REGISTER', '-': null },
+  leftStack: ['L1', 'L2', 'L3'],
+  rightStack: ['R1', 'R2', 'R3'],
+  leftAux: {
+    A: 'L_A',
+    'sG#': 'L_GSHARP',
+    F: 'L_F',
+    Eb: 'L_EB',
+    'C#': 'L_CSHARP',
+    E: 'L_E',
+    'F#': 'L_FSHARP',
+    Bb: 'L_BB',
+    'G#': 'L_AB',
+  },
+  rightAux: {
+    S1: 'SIDE_1',
+    S2: 'SIDE_2',
+    S3: 'SIDE_3',
+    S4: 'SIDE_4',
+    Bb: 'R_BB',
+    'G#': 'R_AB',
+    F: 'R_F',
+  },
+}
+
+export const CLARINET_OEHLER_SPECS: FingeringSpec[] = [
+  { note: 'E3', code: 'T 123 E | 123 F', kind: 'primary', comment: "Also press RH thumb key (bell key) if model offers low E correction." },
+  { note: 'F3', code: 'T 123 | 123 F', kind: 'primary', comment: "Also press RH thumb key (bell key) if model offers low E correction." },
+  { note: 'F#3', code: 'T 123 F# | 123 F', kind: 'primary' },
+  { note: 'F#3', code: 'T 123 E | 123', kind: 'alternate' },
+  { note: 'G3', code: 'T 123 | 123', kind: 'primary' },
+  { note: 'G#3', code: 'T 123 | 123 G#', kind: 'primary' },
+  { note: 'G#3', code: 'T 123 G# | 123', kind: 'alternate' },
+  { note: 'A3', code: 'T 123 | 12-', kind: 'primary' },
+  { note: 'A#3', code: 'T 123 | 12- Bb', kind: 'primary' },
+  { note: 'A#3', code: 'T 123 | 1-3', kind: 'alternate' },
+  { note: 'A#3', code: 'T 123 Bb | 12-', kind: 'alternate' },
+  { note: 'B3', code: 'T 123 | 1--', kind: 'primary' },
+  { note: 'C4', code: 'T 123 | ---', kind: 'primary' },
+  { note: 'C#4', code: 'T 123 C# | ---', kind: 'primary' },
+  { note: 'D4', code: 'T 12- | ---', kind: 'primary' },
+  { note: 'D#4', code: 'T 12- Eb | ---', kind: 'primary' },
+  { note: 'D#4', code: 'T 12- | --- S4', kind: 'alternate' },
+  { note: 'E4', code: 'T 1-- | ---', kind: 'primary' },
+  { note: 'F4', code: 'T 1-- | --- S3', kind: 'primary' },
+  { note: 'F4', code: 'T -2- | ---', kind: 'alternate', comment: "For Austrian models. Pitch is high on other models." },
+  { note: 'F4', code: 'T 1-- F | ---', kind: 'alternate', comment: "For Oehler models." },
+  { note: 'F#4', code: 'T --- | ---', kind: 'primary' },
+  { note: 'G4', code: '- --- | ---', kind: 'primary' },
+  { note: 'G4', code: '- --- | 123', kind: 'alternate', comment: "Basic simple vent fingering." },
+  { note: 'G#4', code: '- --- sG# | ---', kind: 'primary' },
+  { note: 'G#4', code: '- --- sG# | 1-3 F', kind: 'alternate', comment: "Basic simple vent fingering." },
+  { note: 'A4', code: '- --- A | ---', kind: 'primary' },
+  { note: 'A4', code: '- --3 A | 1-3 F', kind: 'alternate', comment: "Basic simple vent fingering." },
+  { note: 'A#4', code: 'R --- A | ---', kind: 'primary' },
+  { note: 'A#4', code: 'R --3 A E | 1-- F', kind: 'alternate', comment: "Basic simple vent fingering." },
+  { note: 'A#4', code: 'R --3 A E | 12- Bb F', kind: 'alternate', comment: "Basic simple vent fingering." },
+  { note: 'B4', code: 'RT 123 E | 123 F', kind: 'primary' },
+  { note: 'C5', code: 'RT 123 | 123 F', kind: 'primary' },
+  { note: 'C#5', code: 'RT 123 F# | 123 F', kind: 'primary' },
+  { note: 'C#5', code: 'RT 123 E | 123', kind: 'alternate' },
+  { note: 'D5', code: 'RT 123 | 123', kind: 'primary' },
+  { note: 'D#5', code: 'RT 123 | 123 G#', kind: 'primary' },
+  { note: 'D#5', code: 'RT 123 G# | 123', kind: 'alternate' },
+  { note: 'E5', code: 'RT 123 | 12-', kind: 'primary' },
+  { note: 'F5', code: 'RT 123 | 12- Bb', kind: 'primary' },
+  { note: 'F5', code: 'RT 123 | 1-3', kind: 'alternate' },
+  { note: 'F5', code: 'RT 123 Bb | 12-', kind: 'alternate' },
+  { note: 'F#5', code: 'RT 123 | 1--', kind: 'primary' },
+  { note: 'G5', code: 'RT 123 | ---', kind: 'primary' },
+  { note: 'G#5', code: 'RT 123 C# | ---', kind: 'primary' },
+  { note: 'A5', code: 'RT 12- | ---', kind: 'primary' },
+  { note: 'A#5', code: 'RT 12- Eb | ---', kind: 'primary' },
+  { note: 'A#5', code: 'RT 12- | --- S4', kind: 'alternate' },
+  { note: 'A#5', code: 'RT 1-3 | ---', kind: 'alternate' },
+  { note: 'B5', code: 'RT 1-- | ---', kind: 'primary' },
+  { note: 'C6', code: 'RT -2- | ---', kind: 'primary' },
+  { note: 'C6', code: 'RT 1-- F | ---', kind: 'alternate', comment: "For Oehler models." },
+  { note: 'C6', code: 'RT 1-- | --- S3', kind: 'alternate' },
+  { note: 'C#6', code: 'RT -23 | 123 G#', kind: 'primary' },
+  { note: 'C#6', code: 'RT --- | ---', kind: 'alternate' },
+  { note: 'D6', code: 'RT -23 | 1-3 G#', kind: 'primary' },
+  { note: 'D#6', code: 'RT -23 | 1-- G#', kind: 'primary' },
+  { note: 'E6', code: 'RT -23 | --- G#', kind: 'primary' },
+  { note: 'E6', code: 'R 123 | --- G#', kind: 'alternate' },
+  { note: 'E6', code: 'RT 123 | --- G#', kind: 'alternate' },
+  { note: 'F6', code: 'RT -23 C# | --- G#', kind: 'primary' },
+  { note: 'F6', code: 'RT 123 C# | 123', kind: 'alternate' },
+  { note: 'F#6', code: 'RT -2- | --- G#', kind: 'primary' },
+  { note: 'F#6', code: 'RT 12- | 123 G#', kind: 'alternate' },
+  { note: 'G6', code: 'RT -2- | --- S4 G#', kind: 'primary' },
+  { note: 'G6', code: 'RT -2- Eb | --- G#', kind: 'alternate' },
+  { note: 'G6', code: 'RT 1-- | 123 G#', kind: 'alternate' },
+  { note: 'G#6', code: 'RT 1-3 | 1-3 F', kind: 'primary', verify: "Upper altissimo: taken as the first of several in WFG’s alternate chart — the best fingering varies from clarinet to clarinet." },
+  { note: 'G#6', code: 'RT --- | 123 G#', kind: 'alternate' },
+  { note: 'G#6', code: 'RT --3 C# | 12-', kind: 'alternate' },
+  { note: 'G#6', code: 'RT -2- Eb | 1-- G#', kind: 'alternate' },
+  { note: 'A6', code: 'RT -23 | --- F', kind: 'primary', verify: "Upper altissimo: taken as the first of several in WFG’s alternate chart — the best fingering varies from clarinet to clarinet." },
+  { note: 'A6', code: 'RT -23 C# | 123', kind: 'alternate' },
+  { note: 'A6', code: 'RT -2- | 1-- Bb G#', kind: 'alternate' },
+  { note: 'A6', code: 'RT -23 | -23', kind: 'alternate', comment: "Higher pitch, good for low instruments and thin-sided reeds." },
+  { note: 'A#6', code: 'RT -23 C# | 123 F', kind: 'primary', verify: "Upper altissimo: taken as the first of several in WFG’s alternate chart — the best fingering varies from clarinet to clarinet." },
+  { note: 'A#6', code: 'RT -23 C# | 12- G#', kind: 'alternate' },
+  { note: 'A#6', code: 'R 123 C# | 123 G#', kind: 'alternate' },
+  { note: 'B6', code: 'RT 12- | 12- F', kind: 'primary', verify: "Upper altissimo: taken as the first of several in WFG’s alternate chart — the best fingering varies from clarinet to clarinet." },
+  { note: 'C7', code: 'RT 1-- | 12- Bb F', kind: 'primary', verify: "Upper altissimo: taken as the first of several in WFG’s alternate chart — the best fingering varies from clarinet to clarinet." },
+  { note: 'C7', code: 'RT 12- Eb | 12- S4 Bb F', kind: 'alternate' },
+  { note: 'C7', code: 'RT 1-- Eb | 1-3 F', kind: 'alternate' },
+]
