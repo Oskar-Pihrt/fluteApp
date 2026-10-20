@@ -26,7 +26,7 @@ const bare = computed(() => route.meta.bare === true)
   <div class="min-h-svh md:flex">
     <nav
       v-if="!bare"
-      class="fixed inset-x-0 bottom-0 z-20 flex border-t border-ink-800 bg-ink-900/95 backdrop-blur md:static md:min-h-svh md:w-56 md:shrink-0 md:flex-col md:border-t-0 md:border-r"
+      class="fixed inset-x-0 bottom-0 z-20 flex border-t border-ink-800 bg-ink-900/95 backdrop-blur md:sticky md:top-0 md:h-svh md:overflow-y-auto md:w-56 md:shrink-0 md:flex-col md:border-t-0 md:border-r"
       style="padding-bottom: var(--safe-bottom)"
       aria-label="Main navigation"
     >
