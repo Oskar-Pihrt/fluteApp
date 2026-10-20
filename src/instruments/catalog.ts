@@ -13,6 +13,8 @@ export const CATALOG_GROUPS: readonly { id: CatalogGroup; label: string }[] = [
   { id: 'saxophones', label: 'Saxophones' },
   { id: 'clarinets', label: 'Clarinets' },
   { id: 'doubleReeds', label: 'Oboes' },
+  { id: 'recorders', label: 'Recorders' },
+  { id: 'whistles', label: 'Tin whistles' },
 ]
 
 const FLUTE_OPTIONS: readonly InstrumentOption[] = [
@@ -232,6 +234,61 @@ function oboe({ writtenRange, lowBb, ...spec }: OboeSpec): InstrumentMeta {
     omitKeys: lowBb ? [] : ['L_BB'],
     writtenRange,
     expectedRange: writtenRange,
+  }
+}
+
+type RecorderSpec = Pick<InstrumentMeta, 'id' | 'transposeSemitones'> & {
+  size: 'Sopranino' | 'Soprano' | 'Alto' | 'Tenor'
+  system: 'baroque' | 'german'
+}
+
+/**
+ * Recorders share one chart in C. The C sizes (soprano, tenor) play it as
+ * written; the F sizes (sopranino, alto) play every note a fourth higher.
+ * The soprano and sopranino sound an octave above written.
+ */
+function recorder({ size, system, ...spec }: RecorderSpec): InstrumentMeta {
+  const inF = size === 'Sopranino' || size === 'Alto'
+  const range: [string, string] = inF ? ['F4', 'G6'] : ['C4', 'D6']
+  const fingering = system === 'baroque' ? 'baroque' : 'German'
+  return {
+    ...spec,
+    name: `${size} recorder (${fingering})`,
+    shortName: `${size} recorder`,
+    noun: `${size.toLowerCase()} recorder`,
+    family: 'recorder',
+    group: 'recorders',
+    dataModule: system === 'baroque' ? 'recorderBaroque' : 'recorderGerman',
+    idPrefix: `${spec.id}:`,
+    registerNames: { 4: 'First octave', 5: 'Second octave', 6: 'Third octave' },
+    defaultPickerOctave: 4,
+    musicXmlNames: [`${size.toLowerCase()} recorder`, 'recorder', 'blockflöte', 'flauto dolce'],
+    options: [],
+    fingeringShift: inF ? 5 : 0,
+    expectedRange: range,
+  }
+}
+
+type WhistleSpec = Pick<InstrumentMeta, 'id' | 'name' | 'transposeSemitones'>
+
+/**
+ * Every tin whistle reads D-whistle notation and fingers it the same way;
+ * the key of the whistle only sets how it sounds.
+ */
+function whistle(spec: WhistleSpec): InstrumentMeta {
+  return {
+    ...spec,
+    shortName: spec.name,
+    noun: spec.name.toLowerCase(),
+    family: 'whistle',
+    group: 'whistles',
+    dataModule: 'whistle',
+    idPrefix: `${spec.id}:`,
+    registerNames: { 4: 'First octave', 5: 'Second octave', 6: 'Second octave' },
+    defaultPickerOctave: 4,
+    musicXmlNames: ['tin whistle', 'whistle', 'penny whistle', 'feadóg'],
+    options: [],
+    expectedRange: ['D4', 'D6'],
   }
 }
 
@@ -478,6 +535,23 @@ export const CATALOG: Record<InstrumentId, InstrumentMeta> = {
     lowBb: true,
     musicXmlNames: ['english horn', 'cor anglais', 'corno inglese', 'englischhorn'],
   }),
+  recorderSopraninoBaroque: recorder({ id: 'recorderSopraninoBaroque', size: 'Sopranino', system: 'baroque', transposeSemitones: 12 }),
+  recorderSopranoBaroque: recorder({ id: 'recorderSopranoBaroque', size: 'Soprano', system: 'baroque', transposeSemitones: 12 }),
+  recorderAltoBaroque: recorder({ id: 'recorderAltoBaroque', size: 'Alto', system: 'baroque', transposeSemitones: 0 }),
+  recorderTenorBaroque: recorder({ id: 'recorderTenorBaroque', size: 'Tenor', system: 'baroque', transposeSemitones: 0 }),
+  recorderSopraninoGerman: recorder({ id: 'recorderSopraninoGerman', size: 'Sopranino', system: 'german', transposeSemitones: 12 }),
+  recorderSopranoGerman: recorder({ id: 'recorderSopranoGerman', size: 'Soprano', system: 'german', transposeSemitones: 12 }),
+  recorderAltoGerman: recorder({ id: 'recorderAltoGerman', size: 'Alto', system: 'german', transposeSemitones: 0 }),
+  recorderTenorGerman: recorder({ id: 'recorderTenorGerman', size: 'Tenor', system: 'german', transposeSemitones: 0 }),
+  // Transposition: the whistle's lowest note minus written D4.
+  whistleD: whistle({ id: 'whistleD', name: 'D whistle', transposeSemitones: 12 }),
+  whistleC: whistle({ id: 'whistleC', name: 'C whistle', transposeSemitones: 10 }),
+  whistleBb: whistle({ id: 'whistleBb', name: 'B♭ whistle', transposeSemitones: 8 }),
+  whistleEb: whistle({ id: 'whistleEb', name: 'E♭ whistle', transposeSemitones: 13 }),
+  whistleF: whistle({ id: 'whistleF', name: 'F whistle', transposeSemitones: 15 }),
+  whistleG: whistle({ id: 'whistleG', name: 'G whistle', transposeSemitones: 17 }),
+  whistleLowA: whistle({ id: 'whistleLowA', name: 'Low A whistle', transposeSemitones: 7 }),
+  whistleLowD: whistle({ id: 'whistleLowD', name: 'Low D whistle', transposeSemitones: 0 }),
 }
 
 export function isInstrumentId(value: unknown): value is InstrumentId {

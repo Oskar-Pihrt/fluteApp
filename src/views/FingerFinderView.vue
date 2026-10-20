@@ -26,10 +26,13 @@ import { useSettingsStore } from '@/stores/settings'
 
 const settings = useSettingsStore()
 const selected = ref<KeyId[]>([])
+/** Holes the player marked as half covered (recorder thumb, whistle half-holes). */
+const half = ref<KeyId[]>([])
 
 const unavailable = computed(() => unavailableKeys(settings.context))
 
-const matches = computed(() => notesForKeys(selected.value, settings.context))
+const matches = computed(() => notesForKeys(selected.value, settings.context, half.value))
+const touched = computed(() => selected.value.length > 0 || half.value.length > 0)
 
 /** Where the echoed match sits, as a percentage of the chart's box. */
 const matchPosition = computed(() => {
@@ -40,16 +43,20 @@ const matchPosition = computed(() => {
   }
 })
 const suggestions = computed(() =>
-  matches.value.length || !selected.value.length
+  matches.value.length || !touched.value
     ? []
-    : nearestFingerings(selected.value, settings.context),
+    : nearestFingerings(selected.value, settings.context, 4, half.value),
 )
 
 // A key set from one instrument means nothing on another.
-watch(() => settings.instrumentId, () => (selected.value = []))
+watch(
+  () => settings.instrumentId,
+  () => reset(),
+)
 
 function reset() {
   selected.value = []
+  half.value = []
 }
 </script>
 
@@ -61,7 +68,7 @@ function reset() {
         <p class="mt-1 text-sm text-ink-400">Tap the keys you hold down.</p>
       </div>
       <button
-        v-if="selected.length"
+        v-if="touched"
         type="button"
         class="shrink-0 rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-ink-400"
         @click="reset"
@@ -75,7 +82,13 @@ function reset() {
          up, where there's width to spare. -->
     <div class="flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:gap-9">
       <div class="relative shrink-0">
-        <KeyChart v-model:keys="selected" interactive size="lg" :unavailable="unavailable" />
+        <KeyChart
+          v-model:keys="selected"
+          v-model:partial="half"
+          interactive
+          size="lg"
+          :unavailable="unavailable"
+        />
 
         <!-- On a phone the answer is otherwise below the tall diagram, out of
              sight while tapping keys. Exact matches are echoed in the empty
@@ -96,7 +109,7 @@ function reset() {
       <div class="w-full min-w-0 flex-1 space-y-4">
         <!-- No selection yet -->
         <p
-          v-if="!selected.length"
+          v-if="!touched"
           class="rounded-xl border border-dashed border-ink-700 px-3 py-8 text-center text-sm text-ink-400"
         >
           Your note appears here.

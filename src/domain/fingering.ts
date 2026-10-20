@@ -66,9 +66,16 @@ export interface CodeGrammar {
    * codes start with the finger group.
    */
   thumb?: Readonly<Record<string, KeyId | readonly KeyId[] | null>>
+  /** Thumb tokens that half cover a key — the recorder's pinched `t`. */
+  thumbPartial?: Readonly<Record<string, KeyId>>
   /** Holes or keys under each hand's fingers, top to bottom. */
   leftStack: readonly KeyId[]
   rightStack: readonly KeyId[]
+  /**
+   * The digit of the right hand's first position: 1 by default ("123"),
+   * 4 where charts number the holes on through the right hand ("4567").
+   */
+  rightFirstDigit?: number
   /** Extra-key tokens allowed after each hand's finger group. */
   leftAux: Readonly<Record<string, KeyId>>
   rightAux: Readonly<Record<string, KeyId>>
@@ -87,7 +94,7 @@ interface ParsedGroup {
   partial: KeyId[]
 }
 
-function parseStackGroup(group: string, stack: readonly KeyId[], code: string): ParsedGroup {
+function parseStackGroup(group: string, stack: readonly KeyId[], code: string, firstDigit = 1): ParsedGroup {
   if (group.length !== stack.length || !/^[-0-9h]+$/.test(group)) {
     throw new Error(
       `Bad finger group "${group}" in fingering code "${code}" — expected ${stack.length} positions`,
@@ -102,7 +109,7 @@ function parseStackGroup(group: string, stack: readonly KeyId[], code: string): 
       partial.push(stack[i])
       continue
     }
-    if (ch !== String(i + 1)) {
+    if (ch !== String(i + firstDigit)) {
       throw new Error(
         `Finger digit "${ch}" is in position ${i + 1} of group "${group}" in "${code}" — ` +
           `each position must hold its own digit, '-', '0' or 'h'`,
@@ -144,11 +151,16 @@ export function parseFingeringCode(code: string, grammar: CodeGrammar, order: re
   // `B` is the thumb lever here and the low-B foot key on the right).
   if (grammar.thumb) {
     const thumbToken = leftTokens.shift()!
-    if (!(thumbToken in grammar.thumb)) {
-      throw new Error(`Unknown thumb token "${thumbToken}" in "${code}"`)
+    const halfThumb = grammar.thumbPartial?.[thumbToken]
+    if (halfThumb) {
+      partial.push(halfThumb)
+    } else {
+      if (!(thumbToken in grammar.thumb)) {
+        throw new Error(`Unknown thumb token "${thumbToken}" in "${code}"`)
+      }
+      const thumbKeys = grammar.thumb[thumbToken]
+      if (thumbKeys) keys.push(...(typeof thumbKeys === 'string' ? [thumbKeys] : thumbKeys))
     }
-    const thumbKeys = grammar.thumb[thumbToken]
-    if (thumbKeys) keys.push(...(typeof thumbKeys === 'string' ? [thumbKeys] : thumbKeys))
   }
 
   const [leftGroup, ...leftAux] = leftTokens
@@ -157,7 +169,7 @@ export function parseFingeringCode(code: string, grammar: CodeGrammar, order: re
   partial.push(...left.partial)
 
   const [rightGroup, ...rightAux] = rightTokens
-  const right = parseStackGroup(rightGroup, grammar.rightStack, code)
+  const right = parseStackGroup(rightGroup, grammar.rightStack, code, grammar.rightFirstDigit)
   keys.push(...right.pressed)
   partial.push(...right.partial)
 

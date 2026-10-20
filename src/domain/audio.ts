@@ -17,6 +17,8 @@ const TIMBRE: Record<InstrumentFamily, 'reedy' | 'pure'> = {
   sax: 'reedy',
   clarinet: 'reedy',
   oboe: 'reedy',
+  recorder: 'pure',
+  whistle: 'pure',
 }
 
 let ctx: AudioContext | null = null

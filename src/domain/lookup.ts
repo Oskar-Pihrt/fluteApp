@@ -23,12 +23,23 @@ export function unavailableKeys({ instrument, config }: InstrumentContext): KeyI
 
 const INDEXES = new WeakMap<Instrument, Map<string, Fingering[]>>()
 
+/**
+ * What a fingering is matched on: the keys held, and which of the
+ * half-coverable holes are half covered. Partly closed keys that can't be
+ * entered as such (an open-hole flute's vented rings) are left out, so they
+ * match on their keys alone.
+ */
+function signature(instrument: Instrument, keys: readonly KeyId[], partial: readonly KeyId[]): string {
+  const halves = partial.filter((id) => instrument.keys.some((k) => k.id === id && k.partial))
+  return halves.length ? `${keySetId(keys)}/${keySetId(halves)}` : keySetId(keys)
+}
+
 function byKeySet(instrument: Instrument): Map<string, Fingering[]> {
   let index = INDEXES.get(instrument)
   if (index) return index
   index = new Map()
   for (const fingering of instrument.fingerings) {
-    const id = keySetId(fingering.keys)
+    const id = signature(instrument, fingering.keys, fingering.partial)
     const bucket = index.get(id)
     if (bucket) bucket.push(fingering)
     else index.set(id, [fingering])
@@ -54,8 +65,12 @@ function byPitchThenKind(a: Fingering, b: Fingering): number {
  * Returns several results when a fingering is shared across octaves (which is
  * the norm for the first two octaves), ordered low to high.
  */
-export function notesForKeys(keys: readonly KeyId[], { instrument, config }: InstrumentContext): Fingering[] {
-  const matches = byKeySet(instrument).get(keySetId(keys)) ?? []
+export function notesForKeys(
+  keys: readonly KeyId[],
+  { instrument, config }: InstrumentContext,
+  partial: readonly KeyId[] = [],
+): Fingering[] {
+  const matches = byKeySet(instrument).get(signature(instrument, keys, partial)) ?? []
   return matches.filter((f) => isPlayable(f, config)).sort(byPitchThenKind)
 }
 
@@ -73,11 +88,17 @@ export function nearestFingerings(
   keys: readonly KeyId[],
   { instrument, config }: InstrumentContext,
   limit = 4,
+  partial: readonly KeyId[] = [],
 ): NearMatch[] {
   const seenNotes = new Set<string>()
+  const halfCapable = new Set(instrument.keys.filter((k) => k.partial).map((k) => k.id))
+  const halves = (ids: readonly KeyId[]) => ids.filter((id) => halfCapable.has(id))
   return instrument.fingerings
     .filter((f) => isPlayable(f, config))
-    .map((fingering) => ({ fingering, distance: keyDistance(keys, fingering.keys) }))
+    .map((fingering) => ({
+      fingering,
+      distance: keyDistance(keys, fingering.keys) + keyDistance(halves(partial), halves(fingering.partial)),
+    }))
     .filter((m) => m.distance > 0)
     .sort(
       (a, b) =>

@@ -1,7 +1,8 @@
 # WFG chart converters
 
-The clarinet and oboe fingering tables (`src/instruments/clarinetBoehm`,
-`clarinetOehler`, `oboe`) were generated from The Woodwind Fingering Guide's
+The clarinet, oboe, recorder and tin whistle fingering tables
+(`src/instruments/clarinetBoehm`, `clarinetOehler`, `oboe`, `recorder`,
+`whistle`) were generated from The Woodwind Fingering Guide's
 charts by reading each fingering's key images, not its text — the images are
 unambiguous where the text notation is not.
 
@@ -18,3 +19,8 @@ basic.jsonl…` for the oboe (`ob_bas_*`, `ob_alt_3`). The first fingering a
 basic chart gives for a note becomes its primary; notes above the basic charts
 come from the alternate chart, at most a few per note, with a *Needs checking*
 note on their primary.
+
+Recorder: `recgen.py rows.jsonl` on the parsed `rec_bas_*` pages prints the
+baroque and German tables (rows marked for the other system are skipped).
+Tin whistle: its charts are text only, so `twparse.py tw_bas_*.html` reads the
+text and `twgen.py rows.jsonl D6` builds the table, without fife-only rows.

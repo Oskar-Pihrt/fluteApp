@@ -18,6 +18,35 @@ export function hole(cx: number, cy: number, r: number): KeyDrawing {
   }
 }
 
+/**
+ * A plain tone hole, covered directly by the finger. Half covering it fills
+ * half of it (no ring to vent).
+ */
+export function openHole(cx: number, cy: number, r: number): KeyDrawing {
+  return {
+    parts: [{ s: 'circle', cx, cy, r }],
+    hit: pad({ x: cx - r, y: cy - r, width: r * 2, height: r * 2 }),
+  }
+}
+
+/**
+ * A recorder's double hole: a larger and a smaller hole side by side.
+ * Covering just the small one is its partial state.
+ */
+export function doubleHole(cx: number, cy: number, r: number, small: number): KeyDrawing {
+  const gap = 4
+  const bigX = cx - (small + gap) / 2
+  const smallX = bigX + r + gap + small
+  return {
+    parts: [
+      { s: 'circle', cx: bigX, cy, r },
+      { s: 'circle', cx: smallX, cy, r: small },
+    ],
+    hit: pad({ x: bigX - r, y: cy - r, width: smallX + small - (bigX - r), height: r * 2 }),
+    partialParts: [1],
+  }
+}
+
 /** A rounded rectangular lever with its label on it. */
 export function lever(x: number, y: number, w: number, h: number, rx = 8, size?: number): KeyDrawing {
   return {

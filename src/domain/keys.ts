@@ -53,6 +53,12 @@ export interface InstrumentKey {
   shape: KeyShape
   /** Set when the key only exists on some instruments of this kind. */
   requires?: Requirement
+  /**
+   * A hole the player can half cover (a recorder's pinched thumb, a
+   * whistle's half-hole). The chart cycles it open → closed → half, and the
+   * lookup tells the three apart.
+   */
+  partial?: boolean
 }
 
 export function keysInGroup(keys: readonly InstrumentKey[], group: KeyGroup): KeyId[] {

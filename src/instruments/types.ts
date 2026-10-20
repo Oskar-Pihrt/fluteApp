@@ -29,21 +29,37 @@ export const INSTRUMENT_IDS = [
   'oboe',
   'oboeDamore',
   'englishHorn',
+  'recorderSopraninoBaroque',
+  'recorderSopranoBaroque',
+  'recorderAltoBaroque',
+  'recorderTenorBaroque',
+  'recorderSopraninoGerman',
+  'recorderSopranoGerman',
+  'recorderAltoGerman',
+  'recorderTenorGerman',
+  'whistleD',
+  'whistleC',
+  'whistleBb',
+  'whistleEb',
+  'whistleF',
+  'whistleG',
+  'whistleLowA',
+  'whistleLowD',
 ] as const
 
 export type InstrumentId = (typeof INSTRUMENT_IDS)[number]
 
 /** Instruments that share tone colour. */
-export type InstrumentFamily = 'flute' | 'sax' | 'clarinet' | 'oboe'
+export type InstrumentFamily = 'flute' | 'sax' | 'clarinet' | 'oboe' | 'recorder' | 'whistle'
 
 /** Headings the instrument picker groups the catalog under. */
-export type CatalogGroup = 'flutes' | 'saxophones' | 'clarinets' | 'doubleReeds'
+export type CatalogGroup = 'flutes' | 'saxophones' | 'clarinets' | 'doubleReeds' | 'recorders' | 'whistles'
 
 /**
  * A lazily loaded bundle of keys, chart and fingerings. Several instruments
  * can share one — every saxophone fingers the same way.
  */
-export type DataModuleId = 'flute' | 'saxophone' | 'clarinetBoehm' | 'clarinetOehler' | 'oboe'
+export type DataModuleId = 'flute' | 'saxophone' | 'clarinetBoehm' | 'clarinetOehler' | 'oboe' | 'recorderBaroque' | 'recorderGerman' | 'whistle'
 
 /** The optional hardware the player has — see `Requirement`. */
 export type InstrumentConfig = readonly Requirement[]
@@ -92,6 +108,12 @@ export interface KeyDrawing {
   ring?: { cx: number; cy: number; r: number }
   /** Lettering drawn on the key, when the chart shows it. */
   text?: { x: number; y: number; size?: number }
+  /**
+   * Parts filled when the key is only partly closed — a recorder's double
+   * hole shows just its small hole covered. Without it, and without a
+   * `ring`, a partly closed key is drawn half filled.
+   */
+  partialParts?: number[]
 }
 
 /** Geometry of an instrument's fingering chart, in viewBox units. */
@@ -158,6 +180,11 @@ export interface InstrumentMeta {
   omitKeys?: readonly KeyId[]
   /** Written notes outside this range are dropped from the shared fingerings. */
   writtenRange?: readonly [string, string]
+  /**
+   * Semitones the shared fingerings are moved by: an F recorder plays the C
+   * recorder's fingering a fourth higher.
+   */
+  fingeringShift?: number
   /**
    * Written range, lowest and highest note, with every option on. The data is
    * the source of truth for the range; this is what a test holds it to.

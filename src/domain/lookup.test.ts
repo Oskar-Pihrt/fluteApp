@@ -252,3 +252,24 @@ describe('transposeBetween', () => {
     expect(transposeBetween('C5', FLUTE, FLUTE)).toBe('C5')
   })
 })
+
+const RECORDER = { instrument: await loadInstrument('recorderSopranoBaroque'), config: [] } as const
+const ALTO_RECORDER = { instrument: await loadInstrument('recorderAltoBaroque'), config: [] } as const
+
+describe('half-covered holes', () => {
+  it('tells a pinched thumb from an open one', () => {
+    const hand = ['L1', 'L2']
+    expect(notesForKeys(hand, RECORDER).map((f) => f.note)).toEqual(['C#5'])
+    expect(notesForKeys(hand, RECORDER, ['THUMB']).map((f) => f.note)).toEqual(['A5'])
+  })
+
+  it('tells the small hole of a double hole from the whole of it', () => {
+    const fingers = ['THUMB', 'L1', 'L2', 'L3', 'R4', 'R5', 'R6']
+    expect(notesForKeys(fingers, RECORDER, ['R7']).map((f) => f.note)).toEqual(['C#4'])
+    expect(notesForKeys(fingers, RECORDER).map((f) => f.note)).toEqual(['D4'])
+  })
+
+  it('plays an F recorder’s fingering a fourth higher', () => {
+    expect(notesForKeys(['THUMB', 'L1', 'L2', 'L3'], ALTO_RECORDER).map((f) => f.note)).toEqual(['C5'])
+  })
+})
