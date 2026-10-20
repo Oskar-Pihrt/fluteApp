@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import InstrumentOptions from '@/components/InstrumentOptions.vue'
 import { CATALOG, CATALOG_GROUPS, type InstrumentId, loadStatus } from '@/instruments'
 
 /**
  * The full catalog as a checklist, grouped by family — which instruments the
- * player wants in the switch. Used on first launch and in Setup. At least one
+ * player wants in the switch, and under each one they tick, what is on it
+ * (footjoint, extra keys). Used on first launch and in Setup. At least one
  * stays ticked.
  */
 const props = defineProps<{ selected: readonly InstrumentId[] }>()
@@ -45,23 +47,29 @@ function status(id: InstrumentId): string | null {
         </span>
       </summary>
       <div class="space-y-1 px-2 pb-2">
-        <label
-          v-for="id in group.ids"
-          :key="id"
-          class="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-ink-800"
-        >
-          <input
-            type="checkbox"
-            class="mt-0.5 h-4 w-4 shrink-0 accent-accent-400"
-            :checked="props.selected.includes(id)"
-            :disabled="props.selected.length === 1 && props.selected.includes(id)"
-            @change="emit('toggle', id, ($event.target as HTMLInputElement).checked)"
+        <div v-for="id in group.ids" :key="id">
+          <label
+            class="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-ink-800"
+          >
+            <input
+              type="checkbox"
+              class="mt-0.5 h-4 w-4 shrink-0 accent-accent-400"
+              :checked="props.selected.includes(id)"
+              :disabled="props.selected.length === 1 && props.selected.includes(id)"
+              @change="emit('toggle', id, ($event.target as HTMLInputElement).checked)"
+            />
+            <span class="min-w-0">
+              <span class="block text-sm text-ink-50">{{ CATALOG[id].name }}</span>
+              <span v-if="status(id)" class="mt-0.5 block text-xs text-ink-400">{{ status(id) }}</span>
+            </span>
+          </label>
+          <!-- What's on the player's instrument, only for the ones they play. -->
+          <InstrumentOptions
+            v-if="props.selected.includes(id)"
+            :id="id"
+            class="mb-2 ml-9 mr-2"
           />
-          <span class="min-w-0">
-            <span class="block text-sm text-ink-50">{{ CATALOG[id].name }}</span>
-            <span v-if="status(id)" class="mt-0.5 block text-xs text-ink-400">{{ status(id) }}</span>
-          </span>
-        </label>
+        </div>
       </div>
     </details>
   </div>
