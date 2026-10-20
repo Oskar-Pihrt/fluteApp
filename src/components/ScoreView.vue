@@ -63,13 +63,12 @@ onMounted(async () => {
 onBeforeUnmount(() => observer?.disconnect())
 
 watch(
-  [vexflow, width, () => props.score, () => props.selectedId, () => props.playingId, flaggedSet, fill],
+  [vexflow, width, () => props.score, () => props.selectedId, flaggedSet, fill],
   () => {
     if (!vexflow.value || !render.value || !canvas.value || width.value < 10) return
     layout.value = render.value(vexflow.value, canvas.value, props.score, {
       width: width.value,
       selectedId: props.selectedId,
-      playingId: props.playingId,
       flagged: flaggedSet.value,
       fill: fill.value,
     })
@@ -129,7 +128,18 @@ function reveal(id: string | null | undefined) {
   }
 }
 
-watch(() => props.playingId, reveal)
+/** The sounding note, lit up in place — engraving the page per note would lag. */
+function markPlaying() {
+  canvas.value?.querySelector('g.is-playing')?.classList.remove('is-playing')
+  if (!props.playingId) return
+  canvas.value?.querySelector(`#vf-${CSS.escape(props.playingId)}`)?.classList.add('is-playing')
+}
+
+watch(() => props.playingId, (id) => {
+  markPlaying()
+  reveal(id)
+})
+watch(layout, markPlaying)
 
 defineExpose({ reveal })
 </script>
@@ -155,5 +165,12 @@ defineExpose({ reveal })
 <style scoped>
 .score-canvas :deep(svg) {
   display: block;
+}
+
+.score-canvas :deep(g.is-playing path),
+.score-canvas :deep(g.is-playing rect),
+.score-canvas :deep(g.is-playing text) {
+  fill: #2f7a20;
+  stroke: #2f7a20;
 }
 </style>
