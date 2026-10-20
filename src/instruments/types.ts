@@ -6,7 +6,18 @@ import type { InstrumentKey, KeyGroup, KeyId, Requirement } from '@/domain/keys'
  * lightweight description of each lives in `catalog.ts`; its keys, chart and
  * fingerings are loaded only when the player uses it.
  */
-export const INSTRUMENT_IDS = ['flute', 'altoSax', 'tenorSax'] as const
+export const INSTRUMENT_IDS = [
+  'flute',
+  'piccolo',
+  'altoFlute',
+  'bassFlute',
+  'sopraninoSax',
+  'sopranoSax',
+  'altoSax',
+  'tenorSax',
+  'baritoneSax',
+  'bassSax',
+] as const
 
 export type InstrumentId = (typeof INSTRUMENT_IDS)[number]
 
@@ -128,6 +139,14 @@ export interface InstrumentMeta {
   musicXmlNames: readonly string[]
   options: readonly InstrumentOption[]
   /**
+   * Keys of the shared data module this instrument doesn't have — the
+   * piccolo's missing footjoint, the baritone-only low A on other saxes.
+   * They are left off the chart, and fingerings using them are dropped.
+   */
+  omitKeys?: readonly KeyId[]
+  /** Written notes outside this range are dropped from the shared fingerings. */
+  writtenRange?: readonly [string, string]
+  /**
    * Written range, lowest and highest note, with every option on. The data is
    * the source of truth for the range; this is what a test holds it to.
    */
@@ -163,4 +182,5 @@ export const REQUIREMENT_LABELS: Record<Requirement, string> = {
   bFoot: 'B footjoint',
   openHole: 'Open hole',
   highFSharp: 'High F♯ key',
+  lowA: 'Low A key',
 }

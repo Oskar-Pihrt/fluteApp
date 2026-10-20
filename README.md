@@ -1,7 +1,8 @@
 # TimbreMap
 
-A fingering reference and practice tool for wind instrument players — flute
-and saxophones today, more on the way. One codebase, three targets: mobile web,
+A fingering reference and practice tool for wind instrument players — the
+flute family (flute, piccolo, alto and bass flute) and the saxophones
+(sopranino to bass) today, more on the way. One codebase, three targets: mobile web,
 desktop web, and a native Android app.
 
 Formerly FluteApp. Storage keys, the IndexedDB name, the backup format id and
@@ -76,6 +77,11 @@ shell but **not** the instrument chunks: the service worker caches each chunk
 the first time it is fetched, `src/platform/instrumentCache.ts` fetches every
 chosen instrument (so it works offline from then on) and deletes the chunks of
 instruments nobody chose any more.
+
+Instruments of one family share a data module and differ in their catalog
+entry: transposition, `omitKeys` (keys the shared chart has but this
+instrument lacks — the piccolo's footjoint, the baritone-only low A on the
+other saxes) and `writtenRange` (notes to keep).
 
 Saved sheets store fingering ids, which are built from the instrument's
 canonical key order (`keyOrder`). A test holds every id an older version could

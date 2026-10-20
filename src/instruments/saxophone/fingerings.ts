@@ -10,12 +10,13 @@ import type { CodeGrammar, FingeringSpec } from '@/domain/fingering'
  * transcribed from a chart: check it against The Woodwind Fingering Guide
  * (https://www.wfg.woodwind.org/sax/) before relying on it. Entries I am least
  * sure of carry a `verify` note, which the UI shows as “Needs checking”.
- * Range: B♭3 through F♯6 (F♯6 needs a high F♯ key). No altissimo.
+ * Range: B♭3 through F♯6 (F♯6 needs a high F♯ key), and A3 on a baritone
+ * with the low A key. No altissimo.
  *
  * Tokens are the key labels printed on the chart, so a code reads like the
  * diagram it describes:
  *
- *   thumb      8ve (octave key), - (off)
+ *   thumb      8ve (octave key), LA (baritone low A), - (off)
  *   left aux   Aux (front F), C1 (palm D), C2 (palm D♯), C4 (palm F), Bis,
  *              G#, C#, B, Bb (left pinky table)
  *   right aux  C3 (side E), TC (side C), TA (side B♭), C5 (high F♯),
@@ -25,7 +26,7 @@ import type { CodeGrammar, FingeringSpec } from '@/domain/fingering'
  * as the flute's first two octaves share theirs.
  */
 export const SAX_GRAMMAR: CodeGrammar = {
-  thumb: { '8ve': 'OCTAVE', '-': null },
+  thumb: { '8ve': 'OCTAVE', LA: 'LOW_A', '-': null },
   leftStack: ['L1', 'L2', 'L3'],
   rightStack: ['R1', 'R2', 'R3'],
   leftAux: {
@@ -77,6 +78,12 @@ function bFlats(octaveKey: '8ve' | '-', octave: number): FingeringSpec[] {
 
 export const SAX_SPECS: FingeringSpec[] = [
   // ── Low register ────────────────────────────────────────────────────────────
+  {
+    note: 'A3',
+    code: 'LA 123 Bb | 123',
+    kind: 'primary',
+    comment: 'Baritone only — low B♭ plus the low A key under the left thumb.',
+  },
   { note: 'A#3', code: '- 123 Bb | 123', kind: 'primary', comment: 'Lowest note on the horn.' },
   { note: 'B3', code: '- 123 B | 123', kind: 'primary' },
   { note: 'C4', code: '- 123 | 123 C', kind: 'primary' },

@@ -1,4 +1,5 @@
 import { shallowReactive } from 'vue'
+import { Note } from 'tonal'
 import { resolveFingering } from '@/domain/fingering'
 import { CATALOG } from './catalog'
 import type { DataModuleId, Instrument, InstrumentData, InstrumentId, InstrumentMeta } from './types'
@@ -36,12 +37,16 @@ export function getMeta(id: InstrumentId): InstrumentMeta {
   return CATALOG[id]
 }
 
+/**
+ * An instrument from its description and its family's shared data, trimmed to
+ * the keys it has (`omitKeys`) and the notes it plays (`writtenRange`).
+ */
 function build(meta: InstrumentMeta, data: InstrumentData): Instrument {
   const { specs, parse, ...rest } = data
-  return {
-    ...meta,
-    ...rest,
-    fingerings: specs.map((spec, i) =>
+  const omit = new Set(meta.omitKeys ?? [])
+  const [low, high] = (meta.writtenRange ?? []).map((note) => Note.midi(note)!)
+  const fingerings = specs
+    .map((spec, i) =>
       resolveFingering(spec, i, {
         id: meta.id,
         parse,
@@ -49,7 +54,25 @@ function build(meta: InstrumentMeta, data: InstrumentData): Instrument {
         idPrefix: meta.idPrefix,
         partialRequires: data.partialRequires,
       }),
-    ),
+    )
+    .filter(
+      (f) =>
+        !f.keys.some((key) => omit.has(key)) &&
+        !f.partial.some((key) => omit.has(key)) &&
+        (low === undefined || (f.midi >= low && f.midi <= high)),
+    )
+  return {
+    ...meta,
+    ...rest,
+    keys: data.keys.filter((key) => !omit.has(key.id)),
+    keyOrder: data.keyOrder.filter((id) => !omit.has(id)),
+    chart: omit.size
+      ? {
+          ...data.chart,
+          drawings: Object.fromEntries(Object.entries(data.chart.drawings).filter(([id]) => !omit.has(id))),
+        }
+      : data.chart,
+    fingerings,
   }
 }
 
