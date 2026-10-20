@@ -21,7 +21,7 @@ const KIND_LABELS: Record<Fingering['kind'], string> = {
   <div class="flex items-center gap-4 rounded-xl border border-ink-700 bg-ink-900 p-4">
     <KeyChart
       :keys="props.fingering.keys"
-      :vented="props.fingering.vented"
+      :partial="props.fingering.partial"
       :size="props.size"
       :instrument="getInstrument(props.fingering.instrument)"
       class="shrink-0"

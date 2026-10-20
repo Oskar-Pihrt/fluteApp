@@ -41,6 +41,8 @@ export const SAX_KEY_IDS = [
   'LOW_C',
 ] as const
 
+export type SaxKeyId = (typeof SAX_KEY_IDS)[number]
+
 export const SAX_KEYS: readonly InstrumentKey[] = [
   { id: 'OCTAVE', label: '8ve', name: 'Octave key (8ve)', hand: 'left', group: 'thumb', shape: 'lever' },
 

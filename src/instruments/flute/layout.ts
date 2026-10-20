@@ -1,4 +1,4 @@
-import type { FluteKeyId } from '@/domain/keys'
+import type { FluteKeyId } from './keys'
 import type { Box, ChartLayout, KeyDrawing } from '@/instruments/types'
 
 /**

@@ -1,33 +1,38 @@
 <script setup lang="ts">
-import { INSTRUMENT_IDS, INSTRUMENTS } from '@/instruments'
+import { ref } from 'vue'
+import InstrumentMenu from '@/components/InstrumentMenu.vue'
+import type { InstrumentId } from '@/instruments'
 import { useSettingsStore } from '@/stores/settings'
 
-/** Segmented switch that flips the whole app between instruments. */
+/** The menu that flips the whole app between the player's instruments. */
+
+const props = withDefaults(defineProps<{ align?: 'left' | 'right' }>(), { align: 'left' })
 
 const settings = useSettingsStore()
+const failed = ref(false)
+
+async function select(id: InstrumentId) {
+  failed.value = false
+  try {
+    await settings.selectInstrument(id)
+  } catch {
+    failed.value = true
+  }
+}
 </script>
 
 <template>
-  <div
-    role="radiogroup"
-    aria-label="Instrument"
-    class="grid grid-cols-3 gap-0.5 rounded-lg border border-ink-700 bg-ink-950 p-0.5"
-  >
-    <button
-      v-for="id in INSTRUMENT_IDS"
-      :key="id"
-      type="button"
-      role="radio"
-      :aria-checked="settings.instrumentId === id"
-      class="rounded-md px-1.5 py-1.5 text-xs font-semibold transition-colors"
-      :class="
-        settings.instrumentId === id
-          ? 'bg-accent-400 text-ink-950'
-          : 'text-ink-400 hover:text-ink-200'
-      "
-      @click="settings.instrumentId = id"
-    >
-      {{ INSTRUMENTS[id].shortName }}
-    </button>
+  <div>
+    <InstrumentMenu
+      :current="settings.instrumentId"
+      :options="settings.visibleInstruments"
+      label="Instrument"
+      edit-link
+      :align="props.align"
+      @select="select"
+    />
+    <p v-if="failed" role="alert" class="mt-1 text-[11px] text-red-300">
+      Couldn’t download it — you seem to be offline.
+    </p>
   </div>
 </template>

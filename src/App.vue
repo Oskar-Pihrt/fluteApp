@@ -45,11 +45,14 @@ const TABS = [
 const activeTab = computed(
   () => (route.meta.parent as string | undefined) ?? (route.name as string | undefined),
 )
+/** First-launch screens stand alone, without navigation or the switch. */
+const bare = computed(() => route.meta.bare === true)
 </script>
 
 <template>
   <div class="min-h-svh md:flex">
     <nav
+      v-if="!bare"
       class="fixed inset-x-0 bottom-0 z-20 flex border-t border-ink-800 bg-ink-900/95 backdrop-blur md:static md:min-h-svh md:w-56 md:shrink-0 md:flex-col md:border-t-0 md:border-r"
       style="padding-bottom: var(--safe-bottom)"
       aria-label="Main navigation"
@@ -90,10 +93,11 @@ const activeTab = computed(
     <div class="min-w-0 flex-1">
       <!-- Phones have no sidebar, so the instrument switch lives in a top bar. -->
       <header
+        v-if="!bare"
         class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-ink-800 bg-ink-900/95 px-4 py-2.5 backdrop-blur md:hidden"
       >
         <p class="text-sm font-semibold text-ink-50">FluteApp</p>
-        <InstrumentSwitch class="w-52" />
+        <InstrumentSwitch class="w-52" align="right" />
       </header>
 
       <main class="mx-auto w-full max-w-3xl px-4 pt-5 pb-28 md:max-w-4xl md:px-10 md:py-9">

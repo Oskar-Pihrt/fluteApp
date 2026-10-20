@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { useSettingsStore } from '@/stores/settings'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -43,6 +44,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/SettingsView.vue'),
     meta: { title: 'Settings' },
   },
+  {
+    path: '/welcome',
+    name: 'welcome',
+    component: () => import('@/views/WelcomeView.vue'),
+    meta: { title: 'Welcome', bare: true },
+  },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
@@ -50,4 +57,11 @@ export const router = createRouter({
   history: createWebHistory(),
   routes,
   scrollBehavior: (_to, _from, saved) => saved ?? { top: 0 },
+})
+
+// A new player picks their instruments before anything else.
+router.beforeEach((to) => {
+  const settings = useSettingsStore()
+  if (!settings.onboarded && to.name !== 'welcome') return { name: 'welcome' }
+  if (settings.onboarded && to.name === 'welcome') return { name: 'finder' }
 })

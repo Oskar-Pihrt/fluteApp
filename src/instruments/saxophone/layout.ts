@@ -1,4 +1,4 @@
-import type { SaxKeyId } from '@/domain/keys'
+import type { SaxKeyId } from './keys'
 import type { Box, ChartLayout, KeyDrawing } from '@/instruments/types'
 
 /**

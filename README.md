@@ -37,11 +37,12 @@ npm run dev          # http://localhost:5173
 ## How it's put together
 
 ```
-src/domain/     the flute itself — keys, fingering notation, lookup, audio
-src/data/       the fingering database, IndexedDB schema, image processing
-src/components/ KeyChart (the fingering diagram), note badges, pickers
-src/views/      one per route
-src/platform/   native-only wiring (no-ops in a browser)
+src/instruments/ the catalog, and per family: keys, chart layout, fingerings
+src/domain/      instrument-independent — fingering notation, lookup, audio
+src/data/        IndexedDB schema, image processing
+src/components/  KeyChart (the fingering diagram), note badges, pickers
+src/views/       one per route
+src/platform/    native-only wiring, the instrument download cache
 ```
 
 The load-bearing idea: **a fingering is just the set of keys held down.** The
@@ -51,6 +52,29 @@ sets. Everything else follows from that.
 `KeyChart.vue` is used in three places and has two modes — interactive for
 feature 1, read-only for features 2 and 3 — so a fingering looks identical
 wherever it appears.
+
+### Instruments
+
+`src/instruments/catalog.ts` describes every instrument — names,
+transposition, register names, the optional hardware a player can set in Setup
+— and is all the app shell knows up front. Keys, chart and fingerings live in a
+*data module* per family (`src/instruments/<family>/data.ts`), shared by every
+instrument that fingers the same way (all saxophones use one). Each data module
+builds to its own `assets/instrument-<family>-<hash>.js` chunk and is loaded
+with `loadInstrument(id)`; after that, `getInstrument(id)` returns it
+synchronously. The app waits for the active instrument before it mounts.
+
+A new player picks their instruments on first launch; the switch at the top
+lists only those, and Setup changes the list. The installed PWA precaches the
+shell but **not** the instrument chunks: the service worker caches each chunk
+the first time it is fetched, `src/platform/instrumentCache.ts` fetches every
+chosen instrument (so it works offline from then on) and deletes the chunks of
+instruments nobody chose any more.
+
+Saved sheets store fingering ids, which are built from the instrument's
+canonical key order (`keyOrder`). A test holds every id an older version could
+have saved (`src/instruments/__fixtures__/saved-fingering-ids.json`) to still
+resolve.
 
 ### Fingering notation
 
@@ -67,21 +91,24 @@ be checked against a printed chart without decoding it first:
 ```
 
 Within a hand group, each position is one character: its own digit (finger
-down), `-` (finger off), or `0` (ring depressed, tone hole left open — open-hole
-flutes only). `parseFingeringCode` validates every code and throws on a typo,
-including a digit in the wrong position.
+down), `-` (finger off), `0` (ring depressed, tone hole left open — open-hole
+flutes) or `h` (hole half covered). Groups can be longer than three, and
+instruments without a thumb key leave the thumb token out. `parseFingeringCode`
+validates every code and throws on a typo, including a digit in the wrong
+position.
 
 ### The fingering data
 
-`src/data/fingerings.ts` covers **B3 – C7** chromatically, transcribed from
+`src/instruments/flute/fingerings.ts` covers **B3 – C7** chromatically, transcribed from
 [The Woodwind Fingering Guide](https://www.wfg.woodwind.org/flute/) basic charts
 for flute, octaves 1–3.
 
 **This data is worth proof-reading.** A mis-transcribed fingering is invisible to
-anyone who can't already play the note, so `src/data/fingerings.test.ts` guards
+anyone who can't already play the note, so `src/instruments/fingerings.test.ts` guards
 the mechanical properties — full chromatic coverage, exactly one primary per
 note, no duplicates, consistent B-footjoint flags, and no fingering that asks
-one finger to be in two places at once. What it cannot check is whether a
+one finger to be in two places at once — for every instrument, against the
+written range its catalog entry declares. What it cannot check is whether a
 fingering is *musically* right. Entries whose source was ambiguous carry a
 `verify` note and show a **Needs checking** badge in the note library; B6 is
 currently the only one.

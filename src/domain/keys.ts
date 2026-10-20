@@ -1,6 +1,3 @@
-import { FLUTE_KEY_IDS } from '@/instruments/flute/keys'
-import { SAX_KEY_IDS } from '@/instruments/saxophone/keys'
-
 /**
  * What a key *is*, independent of which instrument it belongs to.
  *
@@ -8,18 +5,17 @@ import { SAX_KEY_IDS } from '@/instruments/saxophone/keys'
  * That single decision drives everything else in the app: the interactive
  * chart emits a set, the lookup matches sets, the library renders sets.
  *
- * Each instrument lists its own keys (`src/instruments/<id>/keys.ts`). Where a
- * key plays the same role on both — the six main finger keys, the left pinky
- * G♯ — the id is shared, which is harmless because a fingering is only ever
- * matched against fingerings of its own instrument.
+ * Each instrument lists its own keys (`src/instruments/<id>/keys.ts`), so a
+ * key id is just a string. Where a key plays the same role on several
+ * instruments — the six main finger keys, the left pinky G♯ — the id is
+ * shared, which is harmless because a fingering is only ever matched against
+ * fingerings of its own instrument.
  *
  * This module describes the instrument, not the diagram — where each key is
  * drawn is the instrument's chart layout's business.
  */
 
-export type FluteKeyId = (typeof FLUTE_KEY_IDS)[number]
-export type SaxKeyId = (typeof SAX_KEY_IDS)[number]
-export type KeyId = FluteKeyId | SaxKeyId
+export type KeyId = string
 
 /** Which finger operates the key. */
 export type KeyGroup =
@@ -49,7 +45,8 @@ export interface InstrumentKey {
   label: string
   /** Long name used in tooltips and accessibility labels. */
   name: string
-  hand: 'left' | 'right'
+  /** `both` for keys no single hand owns, like a valve block. */
+  hand: 'left' | 'right' | 'both'
   group: KeyGroup
   shape: KeyShape
   /** Set when the key only exists on some instruments of this kind. */
@@ -60,18 +57,21 @@ export function keysInGroup(keys: readonly InstrumentKey[], group: KeyGroup): Ke
   return keys.filter((k) => k.group === group).map((k) => k.id)
 }
 
-/** Canonical ordering, so two equal fingerings always serialise identically. */
-const KEY_ORDER = new Map<KeyId, number>(
-  [...new Set<KeyId>([...FLUTE_KEY_IDS, ...SAX_KEY_IDS])].map((id, i) => [id, i]),
-)
-
-export function sortKeys(keys: readonly KeyId[]): KeyId[] {
-  return [...new Set(keys)].sort((a, b) => KEY_ORDER.get(a)! - KEY_ORDER.get(b)!)
+/**
+ * A key set in the instrument's canonical order (`order` is its key ids, in
+ * order), so two equal fingerings always serialise identically.
+ */
+export function sortKeys(keys: readonly KeyId[], order: readonly KeyId[]): KeyId[] {
+  const rank = new Map(order.map((id, i) => [id, i]))
+  return [...new Set(keys)].sort((a, b) => (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity))
 }
 
-/** Stable string form of a key set — used as a lookup map index. */
+/**
+ * Stable string form of a key set — used as a lookup map index. Sorted
+ * alphabetically, so it needs no instrument; it is never shown or stored.
+ */
 export function keySetId(keys: readonly KeyId[]): string {
-  return sortKeys(keys).join('+') || 'OPEN'
+  return [...new Set(keys)].sort().join('+') || 'OPEN'
 }
 
 export function sameKeys(a: readonly KeyId[], b: readonly KeyId[]): boolean {

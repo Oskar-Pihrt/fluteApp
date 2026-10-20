@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
+import InstrumentMenu from '@/components/InstrumentMenu.vue'
 import KeyChart from '@/components/KeyChart.vue'
 import NoteBadge from '@/components/NoteBadge.vue'
 import NotePicker from '@/components/NotePicker.vue'
@@ -16,10 +17,10 @@ import { createBlobUrl, revokeBlobUrl } from '@/data/images'
 import { playNote, playSequence } from '@/domain/audio'
 import { type Fingering, prettyCode } from '@/domain/fingering'
 import { canonicalNote, fingeringsForNote, noteLabel, noteRange, transposeBetween } from '@/domain/lookup'
-import { INSTRUMENT_IDS, INSTRUMENTS, type InstrumentId } from '@/instruments'
+import { CATALOG, type InstrumentId, loadInstrument } from '@/instruments'
 import { Note } from 'tonal'
 import { useSettingsStore } from '@/stores/settings'
-import { useSheetsStore } from '@/stores/sheets'
+import { sheetInstrument, useSheetsStore } from '@/stores/sheets'
 
 /**
  * Feature 3, detail — the uploaded image plus the sequence of notes to play,
@@ -53,7 +54,16 @@ const sheet = ref<Sheet | null>(null)
  * that instrument's written pitch, so its fingerings, range and playback must
  * follow it even when the switch is set to something else.
  */
-const context = computed(() => settings.contextFor(sheet.value?.instrument))
+const context = computed(() => settings.contextFor(sheet.value ? sheetInstrument(sheet.value) : undefined))
+/** Set when the sheet's instrument couldn't be downloaded (offline, never used). */
+const instrumentMissing = ref<InstrumentId | null>(null)
+
+/** Instruments the part can be rewritten for: the player's, plus its own. */
+const convertOptions = computed(() => {
+  const own = sheet.value ? sheetInstrument(sheet.value) : settings.instrumentId
+  const wanted = new Set<InstrumentId>([...settings.visibleInstruments, own])
+  return (Object.keys(CATALOG) as InstrumentId[]).filter((id) => wanted.has(id))
+})
 const imageUrl = ref<string | null>(null)
 const draft = ref<DraftNote[]>([])
 const savedSnapshot = ref('[]')
@@ -107,6 +117,15 @@ async function load() {
   const found = await store.get(id)
   if (!found) {
     await router.replace({ name: 'sheets' })
+    return
+  }
+  // Its notes only make sense with its instrument's fingerings.
+  try {
+    await loadInstrument(sheetInstrument(found))
+    instrumentMissing.value = null
+  } catch {
+    instrumentMissing.value = sheetInstrument(found)
+    sheet.value = null
     return
   }
   sheet.value = found
@@ -397,7 +416,13 @@ async function convertTo(id: InstrumentId) {
     window.alert('Save or discard your changes first.')
     return
   }
-  const target = INSTRUMENTS[id]
+  let target
+  try {
+    target = await loadInstrument(id)
+  } catch {
+    window.alert(`Couldn’t download the ${CATALOG[id].noun} — you seem to be offline.`)
+    return
+  }
   const playable = new Set(noteRange(settings.contextFor(id)).map((entry) => entry.midi))
   const outside = draft.value.filter((entry) => {
     const written = transposeBetween(entry.note, context.value.instrument, target)
@@ -415,7 +440,7 @@ async function convertTo(id: InstrumentId) {
     return
   }
   await store.convertInstrument(sheet.value.id, id)
-  settings.instrumentId = id
+  await settings.selectInstrument(id)
   await load()
 }
 
@@ -461,22 +486,15 @@ async function deleteSheet() {
          into the new instrument's written pitch, so the piece sounds the same. -->
     <div v-if="!renaming" class="space-y-1.5">
       <p class="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
-        Notes written for — tap to transpose
+        Notes written for — pick another to transpose
       </p>
-      <div role="radiogroup" aria-label="Instrument of this part" class="grid grid-cols-3 gap-0.5 rounded-lg border border-ink-700 bg-ink-950 p-0.5">
-        <button
-          v-for="id in INSTRUMENT_IDS"
-          :key="id"
-          type="button"
-          role="radio"
-          :aria-checked="context.instrument.id === id"
-          class="rounded-md px-1.5 py-1.5 text-xs font-semibold transition-colors"
-          :class="context.instrument.id === id ? 'bg-accent-400 text-ink-950' : 'text-ink-400 hover:text-ink-200'"
-          @click="context.instrument.id !== id && convertTo(id)"
-        >
-          {{ INSTRUMENTS[id].shortName }}
-        </button>
-      </div>
+      <InstrumentMenu
+        :current="context.instrument.id"
+        :options="convertOptions"
+        label="Instrument of this part"
+        class="max-w-xs"
+        @select="convertTo"
+      />
     </div>
 
     <form v-else class="space-y-2" @submit.prevent="saveRename">
@@ -752,7 +770,7 @@ async function deleteSheet() {
           <KeyChart
             v-if="selected.chosen"
             :keys="selected.chosen.keys"
-            :vented="selected.chosen.vented"
+            :partial="selected.chosen.partial"
             :instrument="context.instrument"
             size="sm"
           />
@@ -881,4 +899,11 @@ async function deleteSheet() {
       </button>
     </div>
   </div>
+  <p
+    v-else-if="instrumentMissing"
+    class="rounded-xl border border-ink-700 bg-ink-900 px-4 py-6 text-sm text-ink-400"
+  >
+    This sheet is written for the {{ CATALOG[instrumentMissing].noun }}, which hasn’t been downloaded to
+    this device yet. Connect to the internet and open it again.
+  </p>
 </template>

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { Note } from 'tonal'
 import { diatonicAtStaffPosition, staffPosition } from './staff'
-import { FLUTE } from '@/instruments'
+import { loadInstrument } from '@/instruments'
 import { noteRange } from './lookup'
+
+const FLUTE = await loadInstrument('flute')
 
 describe('staffPosition', () => {
   it('places E4 on the bottom line', () => {
