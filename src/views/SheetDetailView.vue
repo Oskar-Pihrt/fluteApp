@@ -703,6 +703,16 @@ const playingNote = computed(() => {
   return { pitch: event.pitch, fingering: fingering ?? fingeringsForNote(event.pitch, context.value)[0] ?? null }
 })
 
+/**
+ * The floating fingering panel of the score view: the note playing, else the
+ * one selected. The photo view has its own beside the note strip.
+ */
+const floating = computed(() => {
+  if (playingNote.value) return { ...playingNote.value, playing: true }
+  if (view.value !== 'score' || !selected.value) return null
+  return { pitch: selected.value.pitch, fingering: selected.value.chosen, playing: false }
+})
+
 /** Play from the selected note, or the beginning; again to stop. */
 function togglePlayback() {
   if (stopPlayback.value) {
@@ -1210,6 +1220,56 @@ async function deleteSheet() {
 
     </section>
 
+    <!-- Photo view: the note strip as it always was, with the selected
+         note's fingering beside it so it stays in view while tapping through
+         the notes. -->
+    <div v-if="view === 'photo' && noteCount" class="flex items-start gap-3">
+      <ol class="flex min-w-0 flex-1 flex-wrap gap-1.5">
+        <template v-for="entry in resolved" :key="entry.event.id">
+          <li v-if="entry.note">
+            <button
+              type="button"
+              class="flex min-w-11 flex-col items-center rounded-lg border px-2 py-1.5 transition-colors"
+              :class="
+                selectedId === entry.event.id
+                  ? 'border-accent-400 bg-ink-800'
+                  : 'border-ink-700 bg-ink-900 hover:border-ink-400'
+              "
+              @click="selectedId = selectedId === entry.event.id ? null : entry.event.id"
+            >
+              <NoteBadge :note="entry.note.pitch" size="sm" />
+              <span v-if="!entry.chosen" class="text-[10px] text-amber-300">?</span>
+              <!-- A dot marks a note the recogniser was unsure about, so attention
+                   goes where it is actually needed rather than note by note. -->
+              <span
+                v-else-if="flaggedIds.includes(entry.event.id)"
+                class="text-[10px] leading-none text-amber-300"
+                :aria-label="`${entry.note.pitch} needs checking`"
+                >•</span
+              >
+            </button>
+          </li>
+          <li v-if="entry.barAfter" class="w-0.5 self-stretch rounded-full bg-accent-300" aria-label="Divider" />
+        </template>
+      </ol>
+
+      <aside
+        v-if="selected"
+        class="sticky top-18 flex shrink-0 flex-col items-center gap-1.5 rounded-xl border border-ink-700 bg-ink-900 p-2 md:top-4"
+        :aria-label="`Fingering for ${selected.pitch}`"
+      >
+        <NoteBadge :note="selected.pitch" size="md" />
+        <KeyChart
+          v-if="selected.chosen"
+          :keys="selected.chosen.keys"
+          :partial="selected.chosen.partial"
+          :instrument="context.instrument"
+          size="sm"
+        />
+        <p v-else class="w-20 text-center text-[11px] text-amber-200">No fingering</p>
+      </aside>
+    </div>
+
     <!-- Detail for the selected note. Deliberately above the keypad: while
          transcribing, the fingering you just entered must stay in view without
          scrolling past the buttons you are tapping. -->
@@ -1366,21 +1426,25 @@ async function deleteSheet() {
       </div>
     </div>
 
-    <!-- While playing: the note sounding and its fingering, always in view. -->
+    <!-- Score view: the note sounding (while playing) or the one selected,
+         with its fingering — always in view, wherever the score is scrolled.
+         Top right on a phone, clear of the editing palette at the bottom. -->
     <aside
-      v-if="playingNote"
-      class="fixed right-4 bottom-24 z-30 flex items-center gap-3 rounded-xl border border-accent-400 bg-ink-900/95 p-2 shadow-xl backdrop-blur md:bottom-6"
+      v-if="floating"
+      class="fixed top-16 right-3 z-30 flex items-center gap-2 rounded-xl border bg-ink-900/95 p-2 shadow-xl backdrop-blur md:top-auto md:right-6 md:bottom-6"
+      :class="floating.playing ? 'border-accent-400' : 'border-ink-600'"
       aria-live="polite"
-      :aria-label="`Playing ${playingNote.pitch}`"
+      :aria-label="`${floating.playing ? 'Playing' : 'Fingering for'} ${floating.pitch}`"
     >
-      <NoteBadge :note="playingNote.pitch" size="lg" />
+      <NoteBadge :note="floating.pitch" size="md" />
       <KeyChart
-        v-if="playingNote.fingering"
-        :keys="playingNote.fingering.keys"
-        :partial="playingNote.fingering.partial"
+        v-if="floating.fingering"
+        :keys="floating.fingering.keys"
+        :partial="floating.fingering.partial"
         :instrument="context.instrument"
         size="sm"
       />
+      <p v-else class="w-16 text-center text-[11px] text-amber-200">No fingering</p>
     </aside>
   </div>
   <p
