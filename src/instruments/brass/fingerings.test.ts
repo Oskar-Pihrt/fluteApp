@@ -43,9 +43,16 @@ describe('horn', () => {
     expect(primaries(HORN_F_SPECS)).toMatchObject({ G3: '0', 'F#3': '2', 'C#3': '123', C4: '0', D5: '0', F5: '1' })
   })
 
-  it('keeps the F side primary on the double horn, the B♭ side as alternates', () => {
-    expect(primaries(DOUBLE_HORN_SPECS)).toEqual(primaries(HORN_F_SPECS))
-    expect(ways(DOUBLE_HORN_SPECS, 'F4')).toContain('T 0')
+  it('matches the published single F horn chart', () => {
+    expect(primaries(HORN_F_SPECS)).toMatchObject({
+      'G#4': '23', A4: '12', 'A#4': '1', B4: '2', C5: '0', 'C#5': '2', D5: '0', 'D#5': '2', E5: '0',
+      'F#5': '2', G5: '0', 'G#5': '23', A5: '12', 'A#5': '1', B5: '2', C6: '0',
+    })
+  })
+
+  it('uses the B♭ side on the double horn where the chart does, keeping the F side as alternates', () => {
+    expect(primaries(DOUBLE_HORN_SPECS)).toMatchObject({ D3: 'T 3', G4: '0', 'G#4': 'T 23', 'C#5': 'T 123' })
+    expect(ways(DOUBLE_HORN_SPECS, 'C5')).toEqual(expect.arrayContaining(['T 0', '0']))
   })
 })
 

@@ -5,7 +5,7 @@ flute family (flute, piccolo, alto and bass flute), the saxophones (sopranino
 to bass), Boehm and Oehler clarinets (E♭, B♭, A, plus alto, bass and basset
 horn on Boehm), the oboe family (oboe, oboe d’amore, English horn),
 recorders (sopranino to tenor, baroque and German fingering), tin whistles
-(high D to low D) and brass (trumpets, cornet, flugelhorn, horn, double horn,
+(high D to low D), the 12-hole alto C ocarina and brass (trumpets, cornet, flugelhorn, horn, double horn,
 baritone, euphonium, trombone — the low brass in treble clef, as brass bands
 write it). Bass-clef instruments are out of scope: note detection reads treble
 clef only. One codebase, three targets: mobile web,
@@ -126,7 +126,9 @@ from the same guide; the saxophone's was written from general knowledge and
 carries *Needs checking* notes. Brass tables are generated from the harmonic
 series (`src/instruments/brass/fingerings.ts`): the least lowering from the
 nearest partial above is the primary, which reproduces the standard charts —
-a test pins it to them.
+a test pins it to them. The double horn's choice of side follows Mouthpiece
+Express's published F-B♭ chart. The ocarina follows Playsoloist's 12-hole
+alto C chart.
 
 `src/instruments/flute/fingerings.ts` covers **B3 – C7** chromatically, transcribed from
 [The Woodwind Fingering Guide](https://www.wfg.woodwind.org/flute/) basic charts

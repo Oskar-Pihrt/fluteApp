@@ -34,8 +34,17 @@ export const TRUMPET_DATA: InstrumentData = { ...valved, specs: TRUMPET_SPECS }
 export const EUPHONIUM_DATA: InstrumentData = { ...valved, specs: EUPHONIUM_SPECS }
 /** Single horn in F. */
 export const HORN_F_DATA: InstrumentData = { ...valved, specs: HORN_F_SPECS }
-/** Double horn in F/B♭: F side primary, B♭ side as alternates. */
-export const DOUBLE_HORN_DATA: InstrumentData = { ...valved, specs: DOUBLE_HORN_SPECS }
+/** Double horn in F/B♭: each side where the published chart uses it, the other as alternates. */
+export const DOUBLE_HORN_DATA: InstrumentData = {
+  ...valved,
+  specs: DOUBLE_HORN_SPECS,
+  source: {
+    intro: 'Which side to use follows',
+    linkText: 'Mouthpiece Express’s F-B♭ double horn chart',
+    url: 'https://mouthpieceexpress.com/blogs/resources/free-french-horn-fingering-chart',
+    outro: '— the fingerings themselves come from each side’s harmonic series.',
+  },
+}
 
 /** Trombone, tenor or with F trigger. */
 export const TROMBONE_DATA: InstrumentData = {
