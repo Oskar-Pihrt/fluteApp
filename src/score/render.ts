@@ -45,9 +45,9 @@ export interface RenderResult {
   staves: StaveGeometry[]
 }
 
-const SELECTED = '#2f7a20'
-const FLAGGED = '#b45309'
-const OFF_TINT = 'rgba(217, 119, 6, 0.14)'
+const SELECTED = '#7bc96a'
+const FLAGGED = '#f59e0b'
+const OFF_TINT = 'rgba(245, 158, 11, 0.12)'
 
 const SYSTEM_HEIGHT = 120
 const TOP_MARGIN = 50
