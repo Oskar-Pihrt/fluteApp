@@ -17,8 +17,10 @@ const props = withDefaults(
     flagged?: readonly string[]
     /** Taps on empty staff become `staffTap`, for entering notes. */
     editing?: boolean
+    /** Letter names under the notes. */
+    noteNames?: boolean
   }>(),
-  { selectedId: null, playingId: null, flagged: () => [], editing: false },
+  { selectedId: null, playingId: null, flagged: () => [], editing: false, noteNames: false },
 )
 
 export interface StaffTap {
@@ -63,7 +65,7 @@ onMounted(async () => {
 onBeforeUnmount(() => observer?.disconnect())
 
 watch(
-  [vexflow, width, () => props.score, () => props.selectedId, flaggedSet, fill],
+  [vexflow, width, () => props.score, () => props.selectedId, flaggedSet, fill, () => props.noteNames],
   () => {
     if (!vexflow.value || !render.value || !canvas.value || width.value < 10) return
     layout.value = render.value(vexflow.value, canvas.value, props.score, {
@@ -71,6 +73,7 @@ watch(
       selectedId: props.selectedId,
       flagged: flaggedSet.value,
       fill: fill.value,
+      noteNames: props.noteNames,
     })
   },
   { deep: false },
@@ -116,6 +119,15 @@ function onTap(event: MouseEvent) {
   })
 }
 
+/** The element the score scrolls in: the nearest scrolling ancestor, else the page. */
+function scroller(): HTMLElement | null {
+  for (let node = canvas.value?.parentElement; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY
+    if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight) return node
+  }
+  return null
+}
+
 /** Keep a note in view — while it plays, or after it is picked elsewhere. */
 function reveal(id: string | null | undefined) {
   if (!id || !layout.value || !canvas.value) return
@@ -123,7 +135,13 @@ function reveal(id: string | null | undefined) {
   if (!hit) return
   const rect = canvas.value.getBoundingClientRect()
   const top = rect.top + hit.y
-  if (top < 80 || top > window.innerHeight - 160) {
+  const box = scroller()
+  if (box) {
+    const view = box.getBoundingClientRect()
+    if (top < view.top + 20 || top > view.bottom - 60) {
+      box.scrollTo({ top: box.scrollTop + top - view.top - view.height / 3, behavior: 'smooth' })
+    }
+  } else if (top < 80 || top > window.innerHeight - 160) {
     window.scrollTo({ top: window.scrollY + top - window.innerHeight / 3, behavior: 'smooth' })
   }
 }
@@ -139,6 +157,8 @@ watch(() => props.playingId, (id) => {
   markPlaying()
   reveal(id)
 })
+// A note picked in the fingering strip or by the review comes into view.
+watch(() => props.selectedId, (id) => reveal(id))
 watch(layout, markPlaying)
 
 defineExpose({ reveal })

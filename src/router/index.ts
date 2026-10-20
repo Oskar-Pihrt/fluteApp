@@ -30,7 +30,7 @@ const routes: RouteRecordRaw[] = [
     path: '/sheets/:id',
     name: 'sheet',
     component: () => import('@/views/SheetDetailView.vue'),
-    meta: { title: 'Sheet', parent: 'sheets' },
+    meta: { title: 'Sheet', parent: 'sheets', immersive: true },
   },
   {
     path: '/ear',

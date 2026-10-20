@@ -23,6 +23,11 @@ export function sheetInstrument(sheet: Pick<Sheet, 'instrument'>): InstrumentId 
   return isInstrumentId(sheet.instrument) ? sheet.instrument : 'flute'
 }
 
+export interface SheetSummary {
+  mode: Score['mode']
+  notes: number
+}
+
 export const useSheetsStore = defineStore('sheets', () => {
   const sheets = ref<Sheet[]>([])
   const loading = ref(false)
@@ -50,6 +55,26 @@ export const useSheetsStore = defineStore('sheets', () => {
   async function scoreFor(sheetId: string): Promise<Score> {
     const row = await db.scores.get(sheetId)
     return row ? row.score : fromPitchList(await legacyNotes(sheetId))
+  }
+
+  /**
+   * What each sheet holds, for the library's labels and filters: its
+   * notation mode and how many notes it has (none: the photo alone).
+   */
+  async function summaries(): Promise<Record<string, SheetSummary>> {
+    const result: Record<string, SheetSummary> = {}
+    await db.scores.each((row) => {
+      result[row.sheetId] = {
+        mode: row.score.mode,
+        notes: row.score.measures.reduce((sum, m) => sum + m.events.filter((e) => e.kind === 'note').length, 0),
+      }
+    })
+    // Sheets from before scores keep their notes as a list.
+    for (const sheet of sheets.value) {
+      if (result[sheet.id]) continue
+      result[sheet.id] = { mode: 'pitches', notes: await db.sheetNotes.where('sheetId').equals(sheet.id).count() }
+    }
+    return result
   }
 
   async function saveScore(sheetId: string, score: Score) {
@@ -205,6 +230,7 @@ export const useSheetsStore = defineStore('sheets', () => {
     loadAll,
     get,
     scoreFor,
+    summaries,
     saveScore,
     create,
     updateMeta,

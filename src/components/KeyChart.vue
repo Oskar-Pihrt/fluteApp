@@ -20,10 +20,12 @@ const props = withDefaults(
     /** Keys the current instrument doesn't have — shown faint and untappable. */
     unavailable?: readonly KeyId[]
     size?: 'sm' | 'md' | 'lg'
+    /** A fixed pixel height instead of `size` — for rows of charts that must line up. */
+    height?: number
     /** Defaults to the active instrument. */
     instrument?: Instrument
   }>(),
-  { partial: () => [], interactive: false, unavailable: () => [], size: 'md', instrument: undefined },
+  { partial: () => [], interactive: false, unavailable: () => [], size: 'md', height: undefined, instrument: undefined },
 )
 
 const emit = defineEmits<{ 'update:keys': [KeyId[]]; 'update:partial': [KeyId[]] }>()
@@ -34,7 +36,9 @@ const halfFillId = `half-fill-${useId()}`
 const settings = useSettingsStore()
 const instrument = computed(() => props.instrument ?? settings.instrument)
 const chart = computed(() => instrument.value.chart)
-const pixelWidth = computed(() => chart.value.pixelWidth[props.size])
+const pixelWidth = computed(() =>
+  props.height ? (props.height * chart.value.width) / chart.value.height : chart.value.pixelWidth[props.size],
+)
 
 /** Keys in drawing order, paired with their geometry. */
 const drawnKeys = computed(() =>

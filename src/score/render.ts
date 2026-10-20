@@ -19,6 +19,8 @@ export interface RenderOptions {
   flagged?: ReadonlySet<string>
   /** Per measure, rhythm mode only: measures that don't add up are tinted. */
   fill?: readonly MeasureFill[]
+  /** Letter names under the staff, for players still learning to read. */
+  noteNames?: boolean
 }
 
 export interface NoteHit {
@@ -45,11 +47,15 @@ export interface RenderResult {
   staves: StaveGeometry[]
 }
 
-const SELECTED = '#7bc96a'
+/** The app's strong green (accent-400), clearly apart from the pale ink. */
+const SELECTED = '#5fb84a'
+const NAME_INK = '#8c966f'
 const FLAGGED = '#f59e0b'
 const OFF_TINT = 'rgba(245, 158, 11, 0.12)'
 
 const SYSTEM_HEIGHT = 120
+/** Room the letter names take under each system. */
+const NAMES_HEIGHT = 22
 const TOP_MARGIN = 50
 const EMPTY_MEASURE = 70
 
@@ -108,10 +114,24 @@ function buildMeasure(VF: VexFlow, score: Score, measure: Measure, options: Rend
     // Pitches mode: noteheads alone — no stem promises a duration. After the
     // colour, which would otherwise paint the stem back in.
     if (!rhythm) note.setStemStyle({ strokeStyle: 'transparent', fillStyle: 'transparent' })
+    if (options.noteNames && event.kind === 'note') {
+      const name = new VF.Annotation(noteName(event.pitch))
+        .setVerticalJustification(VF.Annotation.VerticalJustify.BOTTOM)
+        .setFont('Noto Serif', 11, color ? 'bold' : 'normal')
+      name.setStyle({ fillStyle: color ?? NAME_INK, strokeStyle: 'transparent' })
+      note.addModifier(name, 0)
+    }
     notes.push(note)
     byId.set(event.id, note)
   }
   return { notes, byId }
+}
+
+/** "F#5" → "F♯": the letter the player says, without the octave. */
+function noteName(pitch: string): string {
+  const match = /^([A-G])(#{1,2}|b{1,2})?/.exec(pitch)
+  if (!match) return ''
+  return match[1] + (match[2] ?? '').replace(/#/g, '♯').replace(/b/g, '♭')
 }
 
 function colorFor(event: ScoreEvent, options: RenderOptions): string | null {
@@ -215,7 +235,8 @@ export function renderScore(VF: VexFlow, element: HTMLDivElement, score: Score, 
   const contents = score.measures.map((measure, index) => contentWidth(VF, score, measure, keys[index]))
   const systems = systemsFor(contents, score, width - 2)
 
-  const height = TOP_MARGIN + systems.length * SYSTEM_HEIGHT
+  const systemHeight = SYSTEM_HEIGHT + (options.noteNames ? NAMES_HEIGHT : 0)
+  const height = TOP_MARGIN + systems.length * systemHeight
   const renderer = new VF.Renderer(element, VF.Renderer.Backends.SVG)
   renderer.resize(width, height)
   const context = renderer.getContext()
@@ -225,7 +246,7 @@ export function renderScore(VF: VexFlow, element: HTMLDivElement, score: Score, 
   const placed = new Map<string, { note: VexFlowModule.StaveNote; system: number }>()
 
   systems.forEach((system, systemIndex) => {
-    const y = TOP_MARGIN - 20 + systemIndex * SYSTEM_HEIGHT
+    const y = TOP_MARGIN - 20 + systemIndex * systemHeight
     const headers = system.map((index, i) => headerWidth(score, index, i === 0))
     const natural = system.reduce((sum, index, i) => sum + contents[index] + headers[i], 0)
     const last = systemIndex === systems.length - 1
