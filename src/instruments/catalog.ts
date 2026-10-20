@@ -15,6 +15,7 @@ export const CATALOG_GROUPS: readonly { id: CatalogGroup; label: string }[] = [
   { id: 'doubleReeds', label: 'Oboes' },
   { id: 'recorders', label: 'Recorders' },
   { id: 'whistles', label: 'Tin whistles' },
+  { id: 'brass', label: 'Brass' },
 ]
 
 const FLUTE_OPTIONS: readonly InstrumentOption[] = [
@@ -292,6 +293,34 @@ function whistle(spec: WhistleSpec): InstrumentMeta {
   }
 }
 
+type BrassSpec = Pick<InstrumentMeta, 'id' | 'name' | 'shortName' | 'noun' | 'transposeSemitones' | 'musicXmlNames'> & {
+  dataModule: 'trumpet' | 'euphonium' | 'hornF' | 'hornDouble' | 'trombone'
+  writtenRange: readonly [string, string]
+  omitKeys: readonly string[]
+  options?: readonly InstrumentOption[]
+}
+
+/** Brass instruments, all in treble clef; the data module sets valves or slide. */
+function brass({ writtenRange, options = [], ...spec }: BrassSpec): InstrumentMeta {
+  return {
+    ...spec,
+    family: 'brass',
+    group: 'brass',
+    idPrefix: `${spec.id}:`,
+    registerNames: { 3: 'Low register', 4: 'Middle register', 5: 'Upper register', 6: 'High register' },
+    defaultPickerOctave: 4,
+    options,
+    writtenRange,
+    expectedRange: writtenRange,
+  }
+}
+
+/** Three-valve trumpet-family chart; the key only changes how it sounds. */
+const trumpetLike = (
+  spec: Pick<BrassSpec, 'id' | 'name' | 'shortName' | 'noun' | 'transposeSemitones' | 'musicXmlNames'>,
+  writtenRange: readonly [string, string] = ['F#3', 'C6'],
+) => brass({ ...spec, dataModule: 'trumpet', writtenRange, omitKeys: ['THUMB_BB', 'V4'] })
+
 export const CATALOG: Record<InstrumentId, InstrumentMeta> = {
   flute: {
     id: 'flute',
@@ -552,6 +581,154 @@ export const CATALOG: Record<InstrumentId, InstrumentMeta> = {
   whistleG: whistle({ id: 'whistleG', name: 'G whistle', transposeSemitones: 17 }),
   whistleLowA: whistle({ id: 'whistleLowA', name: 'Low A whistle', transposeSemitones: 7 }),
   whistleLowD: whistle({ id: 'whistleLowD', name: 'Low D whistle', transposeSemitones: 0 }),
+  trumpetBb: trumpetLike({
+    id: 'trumpetBb',
+    name: 'B♭ trumpet',
+    shortName: 'Trumpet',
+    noun: 'trumpet',
+    transposeSemitones: -2,
+    musicXmlNames: ['trumpet', 'trompete', 'tromba', 'trompette'],
+  }),
+  trumpetC: trumpetLike({
+    id: 'trumpetC',
+    name: 'C trumpet',
+    shortName: 'C trumpet',
+    noun: 'C trumpet',
+    transposeSemitones: 0,
+    musicXmlNames: ['trumpet in c', 'c trumpet'],
+  }),
+  trumpetD: trumpetLike({
+    id: 'trumpetD',
+    name: 'D trumpet',
+    shortName: 'D trumpet',
+    noun: 'D trumpet',
+    transposeSemitones: 2,
+    musicXmlNames: ['trumpet in d', 'd trumpet'],
+  }),
+  trumpetEb: trumpetLike({
+    id: 'trumpetEb',
+    name: 'E♭ trumpet',
+    shortName: 'E♭ trumpet',
+    noun: 'E♭ trumpet',
+    transposeSemitones: 3,
+    musicXmlNames: ['trumpet in e', 'eb trumpet', 'e-flat trumpet'],
+  }),
+  // Sounds an octave above the B♭ trumpet. Its fourth valve isn't charted;
+  // the written range is where it is usually written.
+  piccoloTrumpet: trumpetLike(
+    {
+      id: 'piccoloTrumpet',
+      name: 'Piccolo trumpet in B♭',
+      shortName: 'Piccolo trumpet',
+      noun: 'piccolo trumpet',
+      transposeSemitones: 10,
+      musicXmlNames: ['piccolo trumpet'],
+    },
+    ['C4', 'C6'],
+  ),
+  cornet: trumpetLike({
+    id: 'cornet',
+    name: 'B♭ cornet',
+    shortName: 'Cornet',
+    noun: 'cornet',
+    transposeSemitones: -2,
+    musicXmlNames: ['cornet', 'kornett'],
+  }),
+  flugelhorn: trumpetLike({
+    id: 'flugelhorn',
+    name: 'Flugelhorn',
+    shortName: 'Flugelhorn',
+    noun: 'flugelhorn',
+    transposeSemitones: -2,
+    musicXmlNames: ['flugelhorn', 'flügelhorn', 'křídlovka'],
+  }),
+  hornF: brass({
+    id: 'hornF',
+    name: 'Horn in F',
+    shortName: 'Horn',
+    noun: 'horn',
+    dataModule: 'hornF',
+    // Sounds a fifth below written.
+    transposeSemitones: -7,
+    writtenRange: ['C#3', 'C6'],
+    omitKeys: ['THUMB_BB', 'V4'],
+    musicXmlNames: ['horn', 'french horn', 'corno', 'cor', 'waldhorn'],
+  }),
+  hornDouble: brass({
+    id: 'hornDouble',
+    name: 'Double horn (F/B♭)',
+    shortName: 'Double horn',
+    noun: 'double horn',
+    dataModule: 'hornDouble',
+    transposeSemitones: -7,
+    writtenRange: ['C#3', 'C6'],
+    omitKeys: ['V4'],
+    musicXmlNames: ['horn', 'french horn', 'corno', 'cor', 'waldhorn'],
+  }),
+  baritoneHorn: trumpetLike({
+    id: 'baritoneHorn',
+    name: 'Baritone horn (treble clef)',
+    shortName: 'Baritone',
+    noun: 'baritone',
+    // B♭, written in treble clef a ninth above sounding, as in brass bands.
+    transposeSemitones: -14,
+    musicXmlNames: ['baritone', 'bariton', 'tenorhorn'],
+  }),
+  euphonium: brass({
+    id: 'euphonium',
+    name: 'Euphonium (treble clef)',
+    shortName: 'Euphonium',
+    noun: 'euphonium',
+    dataModule: 'euphonium',
+    transposeSemitones: -14,
+    writtenRange: ['C#3', 'C6'],
+    omitKeys: ['THUMB_BB'],
+    options: [
+      {
+        kind: 'toggle',
+        heading: 'Valves',
+        requirement: 'fourthValve',
+        label: 'Fourth valve',
+        description: 'Fills in the low register below written F♯3, and offers alternates for 1 3 and 1 2 3.',
+        default: true,
+      },
+    ],
+    musicXmlNames: ['euphonium'],
+  }),
+  trombone: brass({
+    id: 'trombone',
+    name: 'Trombone (treble clef)',
+    shortName: 'Trombone',
+    noun: 'trombone',
+    dataModule: 'trombone',
+    transposeSemitones: -14,
+    writtenRange: ['F#3', 'C6'],
+    omitKeys: ['TRIGGER'],
+    musicXmlNames: ['trombone', 'posaune', 'pozoun'],
+  }),
+  tenorbassTrombone: brass({
+    id: 'tenorbassTrombone',
+    name: 'Tenor-bass trombone (treble clef)',
+    shortName: 'Tenor-bass trombone',
+    noun: 'trombone',
+    dataModule: 'trombone',
+    transposeSemitones: -14,
+    // The F trigger reaches down to D; the B below it (written C♯3) is the
+    // famous missing note.
+    writtenRange: ['D3', 'C6'],
+    omitKeys: [],
+    options: [
+      {
+        kind: 'toggle',
+        heading: 'Trigger',
+        requirement: 'fTrigger',
+        label: 'F trigger',
+        description: 'The F attachment, for the low register and shorter positions.',
+        default: true,
+      },
+    ],
+    musicXmlNames: ['trombone', 'posaune', 'pozoun'],
+  }),
 }
 
 export function isInstrumentId(value: unknown): value is InstrumentId {

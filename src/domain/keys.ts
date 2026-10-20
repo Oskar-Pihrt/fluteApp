@@ -30,6 +30,8 @@ export type KeyGroup =
   | 'rightPinky'
   | 'leftSide'
   | 'rightThumb'
+  | 'valves'
+  | 'slide'
 
 /** Visual shape, so the chart can distinguish tone holes from lever keys. */
 export type KeyShape = 'hole' | 'lever'
@@ -39,7 +41,7 @@ export type KeyShape = 'hole' | 'lever'
  * is the set of these they have; a fingering is playable when its
  * requirements are all covered.
  */
-export type Requirement = 'bFoot' | 'openHole' | 'highFSharp' | 'lowA' | 'leftAb' | 'leftBb' | 'lowC' | 'lowBb' | 'leftF' | 'thirdOctaveKey'
+export type Requirement = 'bFoot' | 'openHole' | 'highFSharp' | 'lowA' | 'leftAb' | 'leftBb' | 'lowC' | 'lowBb' | 'leftF' | 'thirdOctaveKey' | 'fourthValve' | 'fTrigger'
 
 export interface InstrumentKey {
   id: KeyId

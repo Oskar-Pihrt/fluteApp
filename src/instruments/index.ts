@@ -54,6 +54,20 @@ const DATA_MODULES: Record<DataModuleId, { chunk: string; load: () => Promise<Lo
     chunk: 'whistle',
     load: () => import('./whistle/data').then((m) => ({ data: m.WHISTLE_DATA, url: m.MODULE_URL })),
   },
+  trumpet: { chunk: 'brass', load: () => import('./brass/data').then((m) => ({ data: m.TRUMPET_DATA, url: m.MODULE_URL })) },
+  euphonium: {
+    chunk: 'brass',
+    load: () => import('./brass/data').then((m) => ({ data: m.EUPHONIUM_DATA, url: m.MODULE_URL })),
+  },
+  hornF: { chunk: 'brass', load: () => import('./brass/data').then((m) => ({ data: m.HORN_F_DATA, url: m.MODULE_URL })) },
+  hornDouble: {
+    chunk: 'brass',
+    load: () => import('./brass/data').then((m) => ({ data: m.DOUBLE_HORN_DATA, url: m.MODULE_URL })),
+  },
+  trombone: {
+    chunk: 'brass',
+    load: () => import('./brass/data').then((m) => ({ data: m.TROMBONE_DATA, url: m.MODULE_URL })),
+  },
 }
 
 /** The chunk an instrument's data is downloaded in. */

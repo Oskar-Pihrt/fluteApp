@@ -45,21 +45,34 @@ export const INSTRUMENT_IDS = [
   'whistleG',
   'whistleLowA',
   'whistleLowD',
+  'trumpetBb',
+  'trumpetC',
+  'trumpetD',
+  'trumpetEb',
+  'piccoloTrumpet',
+  'cornet',
+  'flugelhorn',
+  'hornF',
+  'hornDouble',
+  'baritoneHorn',
+  'euphonium',
+  'trombone',
+  'tenorbassTrombone',
 ] as const
 
 export type InstrumentId = (typeof INSTRUMENT_IDS)[number]
 
 /** Instruments that share tone colour. */
-export type InstrumentFamily = 'flute' | 'sax' | 'clarinet' | 'oboe' | 'recorder' | 'whistle'
+export type InstrumentFamily = 'flute' | 'sax' | 'clarinet' | 'oboe' | 'recorder' | 'whistle' | 'brass'
 
 /** Headings the instrument picker groups the catalog under. */
-export type CatalogGroup = 'flutes' | 'saxophones' | 'clarinets' | 'doubleReeds' | 'recorders' | 'whistles'
+export type CatalogGroup = 'flutes' | 'saxophones' | 'clarinets' | 'doubleReeds' | 'recorders' | 'whistles' | 'brass'
 
 /**
  * A lazily loaded bundle of keys, chart and fingerings. Several instruments
  * can share one — every saxophone fingers the same way.
  */
-export type DataModuleId = 'flute' | 'saxophone' | 'clarinetBoehm' | 'clarinetOehler' | 'oboe' | 'recorderBaroque' | 'recorderGerman' | 'whistle'
+export type DataModuleId = 'flute' | 'saxophone' | 'clarinetBoehm' | 'clarinetOehler' | 'oboe' | 'recorderBaroque' | 'recorderGerman' | 'whistle' | 'trumpet' | 'euphonium' | 'hornF' | 'hornDouble' | 'trombone'
 
 /** The optional hardware the player has — see `Requirement`. */
 export type InstrumentConfig = readonly Requirement[]
@@ -228,4 +241,6 @@ export const REQUIREMENT_LABELS: Record<Requirement, string> = {
   lowBb: 'Low B♭ key',
   leftF: 'Left F key',
   thirdOctaveKey: 'Third octave key',
+  fourthValve: 'Fourth valve',
+  fTrigger: 'F trigger',
 }
