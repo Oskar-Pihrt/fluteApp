@@ -60,11 +60,12 @@ export interface Fingering extends FingeringSpec {
 /** The tokens an instrument's woodwind chart codes are written with. */
 export interface CodeGrammar {
   /**
-   * Leading token of the left hand; `null` means the thumb is off. Omitted
-   * for instruments with no thumb key or hole, whose codes start with the
-   * finger group.
+   * Leading token of the left hand; `null` means the thumb is off, a list
+   * that it presses several keys at once (the clarinet's `RT`: register key
+   * and thumb hole). Omitted for instruments with no thumb key or hole, whose
+   * codes start with the finger group.
    */
-  thumb?: Readonly<Record<string, KeyId | null>>
+  thumb?: Readonly<Record<string, KeyId | readonly KeyId[] | null>>
   /** Holes or keys under each hand's fingers, top to bottom. */
   leftStack: readonly KeyId[]
   rightStack: readonly KeyId[]
@@ -146,8 +147,8 @@ export function parseFingeringCode(code: string, grammar: CodeGrammar, order: re
     if (!(thumbToken in grammar.thumb)) {
       throw new Error(`Unknown thumb token "${thumbToken}" in "${code}"`)
     }
-    const thumbKey = grammar.thumb[thumbToken]
-    if (thumbKey) keys.push(thumbKey)
+    const thumbKeys = grammar.thumb[thumbToken]
+    if (thumbKeys) keys.push(...(typeof thumbKeys === 'string' ? [thumbKeys] : thumbKeys))
   }
 
   const [leftGroup, ...leftAux] = leftTokens

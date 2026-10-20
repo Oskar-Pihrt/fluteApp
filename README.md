@@ -1,8 +1,10 @@
 # TimbreMap
 
 A fingering reference and practice tool for wind instrument players — the
-flute family (flute, piccolo, alto and bass flute) and the saxophones
-(sopranino to bass) today, more on the way. One codebase, three targets: mobile web,
+flute family (flute, piccolo, alto and bass flute), the saxophones (sopranino
+to bass), Boehm and Oehler clarinets (E♭, B♭, A, plus alto, bass and basset
+horn on Boehm) and the oboe family (oboe, oboe d’amore, English horn) today,
+more on the way. One codebase, three targets: mobile web,
 desktop web, and a native Android app.
 
 Formerly FluteApp. Storage keys, the IndexedDB name, the backup format id and
@@ -110,6 +112,11 @@ validates every code and throws on a typo, including a digit in the wrong
 position.
 
 ### The fingering data
+
+Clarinet and oboe tables are converted from The Woodwind Fingering Guide's
+charts by `scripts/wfg/` (see its README); the flute's was transcribed by hand
+from the same guide; the saxophone's was written from general knowledge and
+carries *Needs checking* notes.
 
 `src/instruments/flute/fingerings.ts` covers **B3 – C7** chromatically, transcribed from
 [The Woodwind Fingering Guide](https://www.wfg.woodwind.org/flute/) basic charts

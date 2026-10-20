@@ -15,6 +15,8 @@ import { noteFrequency } from './lookup'
 const TIMBRE: Record<InstrumentFamily, 'reedy' | 'pure'> = {
   flute: 'pure',
   sax: 'reedy',
+  clarinet: 'reedy',
+  oboe: 'reedy',
 }
 
 let ctx: AudioContext | null = null
