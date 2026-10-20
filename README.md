@@ -70,8 +70,7 @@ with `loadInstrument(id)`; after that, `getInstrument(id)` returns it
 synchronously. The app waits for the active instrument before it mounts.
 
 A new player gets a short welcome (what each tab does, how to install the app)
-and picks their instruments (`src/views/WelcomeView.vue`; the logo is a
-placeholder in `src/components/AppLogo.vue`). The switch at the top lists only
+and picks their instruments (`src/views/WelcomeView.vue`). The switch at the top lists only
 those, and Setup changes the list. The installed PWA precaches the
 shell but **not** the instrument chunks: the service worker caches each chunk
 the first time it is fetched, `src/platform/instrumentCache.ts` fetches every
@@ -194,3 +193,10 @@ Note **durations** are neither detected nor stored — the app is a fingering
 reference, not a score editor. Repeats, `D.C.` and voltas are ignored, so a piece
 with them reads in printed order rather than playing order. Chords are detected
 but reduced to their top note, with a warning.
+
+## Logo and icons
+
+The logo is `public/logo.png`. `node scripts/render-icons.mjs` (needs
+`rsvg-convert`) renders it into the favicon, the PWA and Apple touch icons and
+the Android launcher icons and splash screens — run it again after changing
+the logo.

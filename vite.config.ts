@@ -11,7 +11,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon-64.png', 'apple-touch-icon.png', 'logo.png'],
       workbox: {
         // The ear trainer's piano samples (~1 MB) are precached so it works offline.
         // The note detector's network (~0.3 MB) too, so detection works offline.
@@ -41,7 +41,7 @@ export default defineConfig({
         icons: [
           { src: 'pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-          // Padded so Android's adaptive-icon crop doesn't clip the flute.
+          // Padded so Android's adaptive-icon crop doesn't clip the logo.
           { src: 'pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },

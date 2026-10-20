@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
+import AppLogo from '@/components/AppLogo.vue'
 import InstrumentSwitch from '@/components/InstrumentSwitch.vue'
 import { TABS } from '@/navigation'
 import { useSettingsStore } from '@/stores/settings'
@@ -30,9 +31,12 @@ const bare = computed(() => route.meta.bare === true)
       aria-label="Main navigation"
     >
       <div class="hidden space-y-3 px-5 py-6 md:block">
-        <div>
-          <p class="text-lg font-semibold text-ink-50">TimbreMap</p>
-          <p class="text-xs text-ink-400">{{ settings.instrument.name }} reference</p>
+        <div class="flex items-center gap-3">
+          <AppLogo :size="36" />
+          <div class="min-w-0">
+            <p class="text-lg font-semibold text-ink-50">TimbreMap</p>
+            <p class="text-xs text-ink-400">{{ settings.instrument.name }} reference</p>
+          </div>
         </div>
         <InstrumentSwitch />
       </div>
@@ -68,7 +72,10 @@ const bare = computed(() => route.meta.bare === true)
         v-if="!bare"
         class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-ink-800 bg-ink-900/95 px-4 py-2.5 backdrop-blur md:hidden"
       >
-        <p class="text-sm font-semibold text-ink-50">TimbreMap</p>
+        <p class="flex items-center gap-2 text-sm font-semibold text-ink-50">
+          <AppLogo :size="22" aria-hidden="true" alt="" />
+          TimbreMap
+        </p>
         <InstrumentSwitch class="w-52" align="right" />
       </header>
 
