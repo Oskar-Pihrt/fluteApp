@@ -242,6 +242,17 @@ a pitch, or on a desktop typing A–G (2–7 set durations, `.` dot, `0` rest, `
 tie, arrows move and transpose, Ctrl+Z/Ctrl+Shift+Z). Measures that don't add
 up are tinted, and *Regroup measures* rebars from the first one that doesn't.
 
+**Playback** (`src/domain/player.ts`) schedules the score on the Web Audio
+clock at a practice tempo, from the selected note, with an optional
+metronome and a measure counted in; the sounding note lights up in place and
+its fingering stays on screen. The playing order expands repeats, first and
+second endings and D.C./D.S. to Fine or the coda (`src/score/playback-order.ts`),
+and `src/score/timeline.ts` turns it into seconds — ties held, pickups
+counted from the end of the bar, 6/8 clicked in dotted quarters.
+
+**Export** writes MusicXML 4.0 (`src/domain/musicxmlExport.ts`), which the
+importer reads back unchanged.
+
 MusicXML import reads the whole part — durations, rests, ties, time and key
 changes, repeats, endings, D.C./D.S. and tempo. Detection from a photo still
 reads pitches only, into a pitches-mode score whose measures follow the
@@ -249,8 +260,7 @@ page's barlines.
 
 ## Not built yet
 
-Durations are not yet **detected** from a photo, and playback is still evenly
-spaced notes — both planned. Chords are detected but reduced to their top note, with a
+Durations are not yet **detected** from a photo — planned. Chords are detected but reduced to their top note, with a
 warning.
 
 ## Logo and icons

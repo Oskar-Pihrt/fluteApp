@@ -18,7 +18,9 @@ import { lettersAlteredBy } from '@/omr/pitch'
 import { useRecogniser } from '@/omr/useRecogniser'
 import type { KeySignature, OmrWarning } from '@/omr/types'
 import { createBlobUrl, revokeBlobUrl } from '@/data/images'
-import { playNote, playSequence } from '@/domain/audio'
+import { playNote } from '@/domain/audio'
+import { playScore } from '@/domain/player'
+import { scoreToMusicXml } from '@/domain/musicxmlExport'
 import { type Fingering, prettyCode } from '@/domain/fingering'
 import { canonicalNote, fingeringsForNote, noteLabel, noteRange, transposeBetween } from '@/domain/lookup'
 import { CATALOG, type InstrumentId, loadInstrument } from '@/instruments'
@@ -198,6 +200,7 @@ async function load() {
   imageUrl.value = createBlobUrl(found.image)
 
   replace(await store.scoreFor(id))
+  tempo.value = score.value.tempo ?? 90
   history.value = []
   future.value = []
   savedSnapshot.value = JSON.stringify(toPlain(score.value))
@@ -633,6 +636,22 @@ function discard() {
   selectedId.value = null
 }
 
+// ── Playback ───────────────────────────────────────────────────────────────
+/** The event sounding now, for the cursor and the fingering it shows. */
+const playingId = ref<string | null>(null)
+/** Practice tempo: starts at the piece's own, never saved with it. */
+const tempo = ref(90)
+const metronome = ref(false)
+const countIn = ref(false)
+
+const playingNote = computed(() => {
+  const event = playingId.value ? eventById(score.value, playingId.value) : null
+  if (event?.kind !== 'note') return null
+  const fingering = fingeringsForNote(event.pitch, context.value).find((f) => f.id === event.chosenFingeringId)
+  return { pitch: event.pitch, fingering: fingering ?? fingeringsForNote(event.pitch, context.value)[0] ?? null }
+})
+
+/** Play from the selected note, or the beginning; again to stop. */
 function togglePlayback() {
   if (stopPlayback.value) {
     stopPlayback.value()
@@ -640,10 +659,20 @@ function togglePlayback() {
     return
   }
   if (!noteCount.value) return
-  stopPlayback.value = playSequence(
-    notesOf(score.value).map((note) => note.pitch),
-    context.value.instrument,
-  )
+  stopPlayback.value = playScore(score.value, context.value.instrument, {
+    tempo: tempo.value,
+    metronome: metronome.value,
+    countIn: countIn.value,
+    startId: selectedId.value,
+    onEvent: (id) => {
+      playingId.value = id
+      if (id === null) stopPlayback.value = null
+    },
+  })
+}
+
+function nudgeTempo(delta: number) {
+  tempo.value = Math.min(240, Math.max(30, tempo.value + delta))
 }
 
 function startRename() {
@@ -705,6 +734,23 @@ async function convertTo(id: InstrumentId) {
   await load()
 }
 
+/** Download the score (as it is now, saved or not) as a MusicXML file. */
+function exportMusicXml() {
+  if (!sheet.value) return
+  const xml = scoreToMusicXml(score.value, {
+    title: sheet.value.title,
+    composer: sheet.value.composer,
+    partName: context.value.instrument.name,
+    transposeSemitones: context.value.instrument.transposeSemitones,
+  })
+  const url = URL.createObjectURL(new Blob([xml], { type: 'application/vnd.recordare.musicxml+xml' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${sheet.value.title.replace(/[\\/:*?"<>|]+/g, '').trim() || 'score'}.musicxml`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 async function deleteSheet() {
   if (!sheet.value) return
   if (!window.confirm(`Delete "${sheet.value.title}" and its notes? This cannot be undone.`)) return
@@ -733,6 +779,15 @@ async function deleteSheet() {
         </p>
       </button>
       <div class="flex shrink-0 gap-2">
+        <button
+          v-if="noteCount"
+          type="button"
+          class="shrink-0 rounded-lg border border-ink-700 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400"
+          title="Download as MusicXML, for MuseScore, Sibelius, Finale or Dorico"
+          @click="exportMusicXml"
+        >
+          Export
+        </button>
         <button
           type="button"
           class="shrink-0 rounded-lg border border-ink-700 px-3 py-1.5 text-xs font-medium text-ink-400 transition-colors hover:border-red-500/60 hover:text-red-300"
@@ -820,6 +875,7 @@ async function deleteSheet() {
         :score="score"
         :selected-id="selectedId"
         :flagged="flaggedIds"
+        :playing-id="playingId"
         :editing="editing"
         @select="selectedId = editing ? $event : $event === selectedId ? null : $event"
         @staff-tap="onStaffTap"
@@ -951,14 +1007,6 @@ async function deleteSheet() {
         </h2>
         <div class="flex gap-2">
           <button
-            v-if="noteCount && settings.audioEnabled"
-            type="button"
-            class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400"
-            @click="togglePlayback"
-          >
-            {{ stopPlayback ? 'Stop' : 'Play through' }}
-          </button>
-          <button
             type="button"
             class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400 disabled:opacity-50"
             :disabled="recogniser.running.value"
@@ -974,6 +1022,60 @@ async function deleteSheet() {
             {{ editing ? 'Done editing' : noteCount ? 'Edit' : 'Note it down' }}
           </button>
         </div>
+      </div>
+
+      <!-- Playback: from the selected note, at a practice tempo, with an
+           optional metronome and a measure counted in. -->
+      <div
+        v-if="noteCount && settings.audioEnabled"
+        class="flex flex-wrap items-center gap-2 rounded-xl border border-ink-700 bg-ink-900 p-2"
+        aria-label="Playback"
+      >
+        <button
+          type="button"
+          class="flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors"
+          :class="stopPlayback ? 'bg-ink-50 text-ink-950' : 'bg-accent-400 text-ink-950 hover:bg-accent-300'"
+          @click="togglePlayback"
+        >
+          {{ stopPlayback ? '■ Stop' : selectedId ? '▶ Play from note' : '▶ Play' }}
+        </button>
+        <div class="flex items-center gap-1" aria-label="Tempo">
+          <button
+            type="button"
+            class="h-9 w-8 rounded-lg border border-ink-600 text-sm text-ink-200 hover:border-accent-400"
+            aria-label="Slower"
+            @click="nudgeTempo(-5)"
+          >
+            −
+          </button>
+          <label class="flex items-center gap-1 text-xs text-ink-400">
+            <input
+              v-model.number="tempo"
+              type="number"
+              min="30"
+              max="240"
+              class="h-9 w-14 rounded-lg border border-ink-600 bg-ink-950 px-1.5 text-center text-sm text-ink-50"
+              aria-label="Tempo in beats per minute"
+            />
+            BPM
+          </label>
+          <button
+            type="button"
+            class="h-9 w-8 rounded-lg border border-ink-600 text-sm text-ink-200 hover:border-accent-400"
+            aria-label="Faster"
+            @click="nudgeTempo(5)"
+          >
+            +
+          </button>
+        </div>
+        <label class="flex cursor-pointer items-center gap-1.5 text-xs text-ink-200">
+          <input v-model="metronome" type="checkbox" class="h-4 w-4 accent-accent-400" />
+          Metronome
+        </label>
+        <label class="flex cursor-pointer items-center gap-1.5 text-xs text-ink-200">
+          <input v-model="countIn" type="checkbox" class="h-4 w-4 accent-accent-400" />
+          Count in
+        </label>
       </div>
 
       <!-- Pitches only, or with rhythm: durations are kept while hidden. -->
@@ -1201,6 +1303,23 @@ async function deleteSheet() {
         </button>
       </div>
     </div>
+
+    <!-- While playing: the note sounding and its fingering, always in view. -->
+    <aside
+      v-if="playingNote"
+      class="fixed right-4 bottom-24 z-30 flex items-center gap-3 rounded-xl border border-accent-400 bg-ink-900/95 p-2 shadow-xl backdrop-blur md:bottom-6"
+      aria-live="polite"
+      :aria-label="`Playing ${playingNote.pitch}`"
+    >
+      <NoteBadge :note="playingNote.pitch" size="lg" />
+      <KeyChart
+        v-if="playingNote.fingering"
+        :keys="playingNote.fingering.keys"
+        :partial="playingNote.fingering.partial"
+        :instrument="context.instrument"
+        size="sm"
+      />
+    </aside>
   </div>
   <p
     v-else-if="instrumentMissing"

@@ -37,16 +37,25 @@ export function audioContext(): AudioContext | null {
   return ctx
 }
 
-export function playNote(note: string, instrument: Instrument, durationSeconds = 1.1): void {
+/** A scheduled sound that can be cut short. */
+export interface Voice {
+  stop(): void
+}
+
+/**
+ * Play a written note at the instrument's sounding pitch, now or at `when`
+ * (seconds on the audio clock — see `audioContext().currentTime`).
+ */
+export function playNote(note: string, instrument: Instrument, durationSeconds = 1.1, when?: number): Voice | null {
   const frequency = noteFrequency(note, instrument)
-  if (frequency == null) return
+  if (frequency == null) return null
 
   const context = audioContext()
-  if (!context) return
+  if (!context) return null
   // Safari and Android WebViews can hand back a suspended context.
   if (context.state === 'suspended') void context.resume()
 
-  const now = context.currentTime
+  const now = Math.max(when ?? 0, context.currentTime)
   const osc = context.createOscillator()
   const gain = context.createGain()
 
@@ -74,28 +83,40 @@ export function playNote(note: string, instrument: Instrument, durationSeconds =
   source.connect(gain).connect(context.destination)
   osc.start(now)
   osc.stop(now + durationSeconds + 0.02)
+  return {
+    stop() {
+      try {
+        osc.stop()
+      } catch {
+        // Already stopped.
+      }
+      gain.disconnect()
+    },
+  }
 }
 
-/** Play a sequence of notes back to back — used by the sheet music view. */
-export function playSequence(
-  notes: readonly string[],
-  instrument: Instrument,
-  noteSeconds = 0.45,
-): () => void {
-  let cancelled = false
-  let index = 0
-
-  const step = () => {
-    if (cancelled || index >= notes.length) return
-    playNote(notes[index], instrument, noteSeconds * 0.9)
-    index++
-    timer = window.setTimeout(step, noteSeconds * 1000)
-  }
-
-  let timer = window.setTimeout(step, 0)
-
-  return () => {
-    cancelled = true
-    window.clearTimeout(timer)
+/** A metronome click: a short, high blip, higher on the first beat of a measure. */
+export function playClick(when: number, accent: boolean): Voice | null {
+  const context = audioContext()
+  if (!context) return null
+  const osc = context.createOscillator()
+  const gain = context.createGain()
+  osc.type = 'square'
+  osc.frequency.value = accent ? 1760 : 1320
+  gain.gain.setValueAtTime(0, when)
+  gain.gain.linearRampToValueAtTime(accent ? 0.16 : 0.1, when + 0.002)
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.04)
+  osc.connect(gain).connect(context.destination)
+  osc.start(when)
+  osc.stop(when + 0.05)
+  return {
+    stop() {
+      try {
+        osc.stop()
+      } catch {
+        // Already stopped.
+      }
+      gain.disconnect()
+    },
   }
 }

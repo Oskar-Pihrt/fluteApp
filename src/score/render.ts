@@ -15,7 +15,6 @@ export type VexFlow = typeof VexFlowModule
 export interface RenderOptions {
   width: number
   selectedId?: string | null
-  playingId?: string | null
   /** Notes worth a second look (low detection confidence). */
   flagged?: ReadonlySet<string>
   /** Per measure, rhythm mode only: measures that don't add up are tinted. */
@@ -51,7 +50,7 @@ const FLAGGED = '#b45309'
 const OFF_TINT = 'rgba(217, 119, 6, 0.14)'
 
 const SYSTEM_HEIGHT = 120
-const TOP_MARGIN = 34
+const TOP_MARGIN = 50
 const EMPTY_MEASURE = 70
 
 const KEY_NAMES = ['Cb', 'Gb', 'Db', 'Ab', 'Eb', 'Bb', 'F', 'C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#']
@@ -101,6 +100,9 @@ function buildMeasure(VF: VexFlow, score: Score, measure: Measure, options: Rend
       autoStem: true,
     })
     for (let i = 0; i < duration.dots; i++) VF.Dot.buildAndAttach([note], { all: true })
+    // Names the note's SVG group `vf-<event id>`, so the player's cursor can
+    // light it up without engraving the page again.
+    note.setAttribute('id', event.id)
     const color = colorFor(event, options)
     if (color) note.setStyle({ fillStyle: color, strokeStyle: color })
     // Pitches mode: noteheads alone — no stem promises a duration. After the
@@ -113,7 +115,7 @@ function buildMeasure(VF: VexFlow, score: Score, measure: Measure, options: Rend
 }
 
 function colorFor(event: ScoreEvent, options: RenderOptions): string | null {
-  if (event.id === options.playingId || event.id === options.selectedId) return SELECTED
+  if (event.id === options.selectedId) return SELECTED
   if (options.flagged?.has(event.id)) return FLAGGED
   return null
 }
