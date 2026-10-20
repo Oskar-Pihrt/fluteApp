@@ -146,11 +146,11 @@ defineExpose({ reveal })
 
 <template>
   <div class="w-full">
-    <div class="overflow-hidden rounded-xl border border-ink-700 bg-ink-50 px-1 py-2">
-      <p v-if="failed" class="px-3 py-6 text-center text-sm text-ink-900">
+    <div class="overflow-hidden rounded-xl border border-ink-700 bg-ink-900 px-1 py-2">
+      <p v-if="failed" class="px-3 py-6 text-center text-sm text-ink-200">
         Couldn’t load the music engraver.
       </p>
-      <p v-else-if="!vexflow" class="px-3 py-6 text-center text-sm text-ink-700">Engraving…</p>
+      <p v-else-if="!vexflow" class="px-3 py-6 text-center text-sm text-ink-400">Engraving…</p>
       <div
         ref="canvas"
         class="score-canvas cursor-pointer"
@@ -167,10 +167,30 @@ defineExpose({ reveal })
   display: block;
 }
 
+.score-canvas {
+  /* VexFlow draws in black; on the dark card its default ink becomes the
+     app's pale text colour (ledger lines, grey #444 by default, too).
+     Coloured notes (selected, uncertain) keep theirs. */
+  --score-ink: var(--color-ink-50);
+}
+
+.score-canvas :deep([fill='black']),
+.score-canvas :deep([fill='#000']),
+.score-canvas :deep([fill='#000000']) {
+  fill: var(--score-ink);
+}
+
+.score-canvas :deep([stroke='black']),
+.score-canvas :deep([stroke='#000']),
+.score-canvas :deep([stroke='#000000']),
+.score-canvas :deep([stroke='#444']) {
+  stroke: var(--score-ink);
+}
+
 .score-canvas :deep(g.is-playing path),
 .score-canvas :deep(g.is-playing rect),
 .score-canvas :deep(g.is-playing text) {
-  fill: #2f7a20;
-  stroke: #2f7a20;
+  fill: var(--color-accent-300);
+  stroke: var(--color-accent-300);
 }
 </style>
