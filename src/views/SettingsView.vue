@@ -21,7 +21,7 @@ async function exportBackup() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `fluteapp-backup-${new Date().toISOString().slice(0, 10)}.json`
+    link.download = `timbremap-backup-${new Date().toISOString().slice(0, 10)}.json`
     link.click()
     URL.revokeObjectURL(url)
     status.value = { kind: 'ok', message: 'Backup downloaded.' }
@@ -67,63 +67,20 @@ async function onImport(event: Event) {
     <header>
       <h1 class="text-xl">Setup</h1>
       <p class="mt-1 text-sm text-ink-400">
-        Tell the app about your {{ settings.instrument.noun }}. Switch instrument at the top.
+        Your instruments and what’s on them, sound, and backups.
       </p>
     </header>
 
     <section id="instruments" class="scroll-mt-20 space-y-3">
       <h2 class="text-xs font-semibold uppercase tracking-wider text-ink-400">Instruments</h2>
       <p class="text-xs leading-relaxed text-ink-400">
-        The ones you play, for the switch at the top. Only these are downloaded to this device.
+        Tick the ones you play — they go in the switch at the top, and only they are downloaded to
+        this device. Under each, tell the app what your instrument has.
       </p>
       <InstrumentPicker
         :selected="settings.visibleInstruments"
         @toggle="(id, on) => settings.setVisible(id, on)"
       />
-    </section>
-
-    <section v-for="option in settings.instrument.options" :key="option.heading" class="space-y-3">
-      <h2 class="text-xs font-semibold uppercase tracking-wider text-ink-400">
-        {{ option.heading }} · {{ settings.instrument.shortName }}
-      </h2>
-      <div v-if="option.kind === 'choice'" class="grid grid-cols-2 gap-2">
-        <button
-          v-for="(choice, index) in option.choices"
-          :key="choice.label"
-          type="button"
-          class="rounded-xl border px-4 py-3 text-left transition-colors"
-          :class="
-            settings.choiceIndex(settings.instrumentId, option) === index
-              ? 'border-accent-400 bg-ink-800'
-              : 'border-ink-700 hover:border-ink-400'
-          "
-          @click="settings.setChoice(settings.instrumentId, option, index)"
-        >
-          <span class="block text-sm font-semibold text-ink-50">{{ choice.label }}</span>
-          <span class="mt-0.5 block text-xs text-ink-400">{{ choice.description }}</span>
-        </button>
-      </div>
-      <label
-        v-else
-        class="flex cursor-pointer items-start gap-3 rounded-xl border border-ink-700 px-4 py-3 transition-colors hover:border-ink-400"
-      >
-        <input
-          type="checkbox"
-          class="mt-0.5 h-4 w-4 shrink-0 accent-accent-400"
-          :checked="settings.hasRequirement(settings.instrumentId, option.requirement)"
-          @change="
-            settings.setRequirement(
-              settings.instrumentId,
-              option.requirement,
-              ($event.target as HTMLInputElement).checked,
-            )
-          "
-        />
-        <span>
-          <span class="block text-sm font-semibold text-ink-50">{{ option.label }}</span>
-          <span class="mt-0.5 block text-xs text-ink-400">{{ option.description }}</span>
-        </span>
-      </label>
     </section>
 
     <section class="space-y-3">

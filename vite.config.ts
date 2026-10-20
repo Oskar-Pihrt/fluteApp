@@ -11,7 +11,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon-64.png', 'apple-touch-icon.png', 'logo.png'],
       workbox: {
         // The ear trainer's piano samples (~1 MB) are precached so it works offline.
         // The note detector's network (~0.3 MB) too, so detection works offline.
@@ -24,15 +24,15 @@ export default defineConfig({
           {
             urlPattern: /\/assets\/instrument-[^/]+\.js$/,
             handler: 'CacheFirst',
-            options: { cacheName: 'fluteapp-instruments' },
+            options: { cacheName: 'timbremap-instruments' },
           },
         ],
       },
       manifest: {
-        name: 'FluteApp — transverse flute fingerings',
-        short_name: 'FluteApp',
+        name: 'TimbreMap — fingerings for wind instruments',
+        short_name: 'TimbreMap',
         description:
-          'Fingering lookup, note library and sheet music practice for transverse flute players.',
+          'Fingering lookup, note library, sheet music and ear training for wind instrument players.',
         theme_color: '#191A19',
         background_color: '#191A19',
         display: 'standalone',
@@ -41,7 +41,7 @@ export default defineConfig({
         icons: [
           { src: 'pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-          // Padded so Android's adaptive-icon crop doesn't clip the flute.
+          // Padded so Android's adaptive-icon crop doesn't clip the logo.
           { src: 'pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },

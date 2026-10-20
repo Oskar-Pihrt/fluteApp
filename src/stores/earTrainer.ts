@@ -10,6 +10,7 @@ import {
   type Question,
 } from '@/domain/earTraining'
 
+// Named before the app became TimbreMap; kept so progress carries over.
 const STORAGE_KEY = 'fluteapp.earTrainer.v1'
 
 interface ModeProgress {
