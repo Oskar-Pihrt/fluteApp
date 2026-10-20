@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import BottomSheet from '@/components/BottomSheet.vue'
+import FingeringStrip, { type StripEntry } from '@/components/FingeringStrip.vue'
 import MeasureTools from '@/components/MeasureTools.vue'
+import PianoKeyboard from '@/components/PianoKeyboard.vue'
 import ScorePalette from '@/components/ScorePalette.vue'
 import type { StaffTap } from '@/components/ScoreView.vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
-import InstrumentMenu from '@/components/InstrumentMenu.vue'
+import { onBeforeRouteLeave, RouterLink, useRoute, useRouter } from 'vue-router'
 import KeyChart from '@/components/KeyChart.vue'
 import NoteBadge from '@/components/NoteBadge.vue'
-import NotePicker from '@/components/NotePicker.vue'
 import OmrDebugView from '@/components/OmrDebugView.vue'
 import ScoreView from '@/components/ScoreView.vue'
 import SheetOverlay from '@/components/SheetOverlay.vue'
-import StaffPosition from '@/components/StaffPosition.vue'
 import type { Sheet } from '@/data/db'
 import { diatonicAtStaffPosition } from '@/domain/staff'
 import { lettersAlteredBy } from '@/omr/pitch'
@@ -53,12 +53,16 @@ import {
   type SequenceItem,
   toPitchesMode,
   toRhythmMode,
+  timeAt,
   toSequence,
 } from '@/score/ops'
 
 /**
  * Feature 3, detail — the sheet as engraved music (or the photo it came
- * from), every note with its fingering.
+ * from), every note with its fingering. Full screen on a phone: a top bar,
+ * the score, and at the bottom whatever the moment needs — the fingering
+ * strip and player while reading, the keyboard while editing, the review
+ * after detection. Everything else waits in bottom sheets.
  *
  * Notes are edited in a local draft and written back on save, so tapping
  * through a long piece doesn't hit IndexedDB on every keystroke.
@@ -99,12 +103,31 @@ const selectedId = ref<string | null>(null)
 const saving = ref(false)
 const stopPlayback = ref<(() => void) | null>(null)
 const zoomed = ref(false)
-const renaming = ref(false)
 const titleDraft = ref('')
 const composerDraft = ref('')
 const descriptionDraft = ref('')
 /** What the page shows: the engraved score, or the photo it came from. */
 const view = ref<'score' | 'photo'>('score')
+/** The bottom sheet open, if any. */
+const panel = ref<null | 'menu' | 'fingering' | 'measure' | 'key' | 'rename' | 'instrument'>(null)
+
+/** Letter names under the notes — a reading aid, remembered on this device. */
+const NAMES_KEY = 'fluteapp.sheetNoteNames'
+const noteNames = ref(readNoteNames())
+function readNoteNames(): boolean {
+  try {
+    return localStorage.getItem(NAMES_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+watch(noteNames, (on) => {
+  try {
+    localStorage.setItem(NAMES_KEY, on ? '1' : '0')
+  } catch {
+    // Storage disabled: the choice lasts until the page closes.
+  }
+})
 
 // ── Automatic detection ────────────────────────────────────────────────────
 const recogniser = useRecogniser()
@@ -204,12 +227,20 @@ async function load() {
   history.value = []
   future.value = []
   savedSnapshot.value = JSON.stringify(toPlain(score.value))
-  view.value = notesOf(score.value).length ? 'score' : 'photo'
+  view.value = 'score'
   detectionWarnings.value = []
   detectedIds.value = []
   detectedRelatives.value = new Map()
   keyOverride.value = null
   selectedId.value = null
+  reviewed.value = new Set()
+  titleDraft.value = found.title
+  composerDraft.value = found.composer
+  // "Start blank" in the library lands straight in the editor.
+  if (route.query.edit) {
+    editing.value = true
+    void router.replace({ query: {} })
+  }
 }
 
 onMounted(load)
@@ -240,6 +271,33 @@ const selected = computed(() => {
 
 const noteCount = computed(() => notesOf(score.value).length)
 
+/** The fingering strip: every note in reading order, barlines kept. */
+const stripEntries = computed<StripEntry[]>(() =>
+  resolved.value.flatMap((entry) =>
+    entry.note
+      ? [{ id: entry.event.id, pitch: entry.note.pitch, fingering: entry.chosen, barAfter: entry.barAfter }]
+      : [],
+  ),
+)
+
+/** The measure being read: the sounding note's, else the selection's. */
+const currentMeasure = computed(() => {
+  const id = playingId.value ?? selectedId.value
+  const at = id ? locate(score.value, id) : null
+  return at ? at.measure : null
+})
+
+/** A tap in the strip: select and hear it; a second tap opens its fingerings. */
+function onStripSelect(id: string) {
+  if (id === selectedId.value && !playingId.value) {
+    panel.value = 'fingering'
+    return
+  }
+  selectedId.value = id
+  const event = eventById(score.value, id)
+  if (settings.audioEnabled && event?.kind === 'note') playNote(event.pitch, context.value.instrument, 0.5)
+}
+
 /** Where a new note starts: a quarter in rhythm mode, nothing in pitches mode. */
 function newNote(pitch: string): NoteEvent {
   return {
@@ -257,7 +315,11 @@ const inputDuration = ref<Duration>({ type: 'quarter', dots: 0 })
 /** Type a note in: after the selection (or at the end), then select it. */
 function addNote(pitch: string) {
   const note = newNote(pitch)
-  score.value = insertEventAfter(score.value, selectedId.value, note)
+  score.value =
+    !selectedId.value && measureCursor.value !== null && score.value.measures[measureCursor.value]
+      ? insertAt(score.value, { measure: measureCursor.value, index: score.value.measures[measureCursor.value].events.length }, note)
+      : insertEventAfter(score.value, selectedId.value, note)
+  measureCursor.value = null
   selectedId.value = note.id
   if (settings.audioEnabled) playNote(pitch, context.value.instrument, 0.4)
 }
@@ -274,10 +336,13 @@ function onStaffTap(tap: StaffTap) {
 }
 
 const selectedEvent = computed(() => (selectedId.value ? eventById(score.value, selectedId.value) : null))
-/** The measure the measure tools work on: the selection's, else the last. */
+/** A measure stepped to with nothing in it to select. */
+const measureCursor = ref<number | null>(null)
+/** The measure the measure tools work on: the selection's, else the one stepped to, else the last. */
 const toolMeasure = computed(() => {
   const at = selectedId.value ? locate(score.value, selectedId.value) : null
-  return at?.measure ?? score.value.measures.length - 1
+  const last = score.value.measures.length - 1
+  return at?.measure ?? Math.min(measureCursor.value ?? last, last)
 })
 const offMeasures = computed(() =>
   score.value.mode === 'rhythm' ? measureFill(score.value).filter((fill) => fill !== 'ok').length : 0,
@@ -326,6 +391,18 @@ function addMeasureAfter() {
   const measures = [...score.value.measures]
   measures.splice(index + 1, 0, { id: eventId(), events: [] })
   score.value = { ...score.value, measures }
+  // Onto the new measure, so the next notes typed land in it.
+  selectedId.value = null
+  measureCursor.value = index + 1
+}
+
+/** Step the measure sheet to the measure before or after, selecting its first event. */
+function moveMeasure(delta: number) {
+  const index = toolMeasure.value + delta
+  const target = score.value.measures[index]
+  if (!target) return
+  selectedId.value = target.events[0]?.id ?? null
+  measureCursor.value = index
 }
 
 function removeMeasure() {
@@ -401,6 +478,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
  * its measures where the page's barlines are.
  */
 async function detect(withRhythm = false) {
+  panel.value = null
   if (!sheet.value) return
   if (noteCount.value && !window.confirm('Replace the notes already entered with detected ones?')) {
     return
@@ -414,6 +492,8 @@ async function detect(withRhythm = false) {
 
   detectionWarnings.value = outcome.warnings
   keyOverride.value = outcome.keySignature
+  reviewed.value = new Set()
+  reviewSkipped.value = false
   if (withRhythm) {
     if (outcome.rhythm?.measures.length) {
       loadDetectedRhythm(outcome.rhythm, outcome.keySignature)
@@ -633,20 +713,6 @@ function toggleBar(index: number) {
   commit(next)
 }
 
-/** A copy of the selected note right after it, to fix a note detection missed. */
-function insertAfter(index: number) {
-  const item = items.value[index]
-  if (!item || item.event.kind !== 'note') return
-  const copy: NoteEvent = { ...newNote(item.event.pitch), ...(item.event.duration ? { duration: item.event.duration } : {}) }
-  const next = [...items.value]
-  // The copy takes over the barline, so it lands in the same measure.
-  next.splice(index, 1, { ...item, barAfter: false }, { event: copy, barAfter: item.barAfter })
-  commit(next)
-  const relative = detectedRelatives.value.get(item.event.id)
-  if (relative != null) detectedRelatives.value.set(copy.id, relative)
-  selectedId.value = copy.id
-}
-
 function chooseFingering(index: number, fingering: Fingering) {
   const options = resolved.value[index].options
   // Storing the id only when it differs from the default keeps backups small
@@ -660,7 +726,79 @@ function chooseFingering(index: number, fingering: Fingering) {
 function toggleEditing() {
   editing.value = !editing.value
   if (editing.value) view.value = 'score'
+  panel.value = null
 }
+
+/** Leave the editor: keep the draft (the save bar offers it), or throw it away on request. */
+function closeEditor() {
+  if (dirty.value && window.confirm('Discard your changes?')) discard()
+  else editing.value = false
+}
+
+// ── Reviewing a detection ──────────────────────────────────────────────────
+/** Unsure notes the player has looked at and kept. */
+const reviewed = ref(new Set<string>())
+const reviewSkipped = ref(false)
+const toCheck = computed(() =>
+  flaggedIds.value.filter((id) => !reviewed.value.has(id) && eventById(score.value, id)?.kind === 'note'),
+)
+const reviewing = computed(
+  () => !editing.value && hasDetected.value && toCheck.value.length > 0 && !reviewSkipped.value,
+)
+/** The note under review: the selection if it is one of them, else the first. */
+const reviewId = computed(() =>
+  selectedId.value && toCheck.value.includes(selectedId.value) ? selectedId.value : (toCheck.value[0] ?? null),
+)
+const reviewIndex = computed(() => items.value.findIndex((item) => item.event.id === reviewId.value))
+const reviewNote = computed(() => {
+  const event = reviewId.value ? eventById(score.value, reviewId.value) : null
+  return event?.kind === 'note' ? event : null
+})
+watch(reviewId, (id) => {
+  if (reviewing.value && id) selectedId.value = id
+})
+
+function stepReview(delta: number) {
+  const list = toCheck.value
+  if (!list.length) return
+  const at = list.indexOf(reviewId.value ?? '')
+  selectedId.value = list[(at + delta + list.length) % list.length]
+}
+
+function keepReviewed() {
+  const id = reviewId.value
+  if (!id) return
+  const list = toCheck.value
+  const next = list[(list.indexOf(id) + 1) % list.length]
+  reviewed.value = new Set([...reviewed.value, id])
+  selectedId.value = next !== id ? next : null
+}
+
+/**
+ * The page around the note under review, cut from the photo: the viewBox of
+ * an SVG holding the whole image, centred on the note's box.
+ */
+const reviewCrop = computed(() => {
+  const box = reviewNote.value?.bbox
+  if (!box || !sheet.value || !imageUrl.value) return null
+  const width = sheet.value.imageWidth
+  const height = sheet.value.imageHeight
+  const tall = Math.max(box.height * height * 7, 60)
+  const wide = tall * 2.6
+  const cx = (box.x + box.width / 2) * width
+  const cy = (box.y + box.height / 2) * height
+  return {
+    viewBox: `${cx - wide / 2} ${cy - tall / 2} ${wide} ${tall}`,
+    width,
+    height,
+    rect: { x: box.x * width, y: box.y * height, width: box.width * width, height: box.height * height },
+    stroke: tall / 70,
+  }
+})
+
+/** The key signature as read, for the review's correction button. */
+const keyLabel = computed(() => KEY_CHOICES.find((choice) => isCurrentKey(choice.key))?.label ?? '?')
+
 
 /** Pitches only, or with rhythm. Durations are kept while hidden. */
 function setMode(mode: Score['mode']) {
@@ -675,6 +813,7 @@ async function save() {
     await store.saveScore(sheet.value.id, score.value)
     savedSnapshot.value = JSON.stringify(toPlain(score.value))
     editing.value = false
+    reviewSkipped.value = true
   } finally {
     saving.value = false
   }
@@ -696,39 +835,51 @@ const tempo = ref(90)
 const metronome = ref(false)
 const countIn = ref(false)
 
-const playingNote = computed(() => {
-  const event = playingId.value ? eventById(score.value, playingId.value) : null
-  if (event?.kind !== 'note') return null
-  const fingering = fingeringsForNote(event.pitch, context.value).find((f) => f.id === event.chosenFingeringId)
-  return { pitch: event.pitch, fingering: fingering ?? fingeringsForNote(event.pitch, context.value)[0] ?? null }
-})
+/** Play the selected measure over and over, for practising a passage. */
+const loopMeasure = ref(false)
 
-/**
- * The floating fingering panel of the score view: the note playing, else the
- * one selected. The photo view has its own beside the note strip.
- */
-const floating = computed(() => {
-  if (playingNote.value) return { ...playingNote.value, playing: true }
-  if (view.value !== 'score' || !selected.value) return null
-  return { pitch: selected.value.pitch, fingering: selected.value.chosen, playing: false }
-})
+/** One measure as a score of its own: what is in force there, no repeats or jumps. */
+function measureOnly(index: number): Score {
+  const measure = score.value.measures[index]
+  return {
+    ...score.value,
+    measures: [
+      {
+        id: measure.id,
+        events: measure.events,
+        time: timeAt(score.value, index),
+        keyFifths: keyAt(score.value, index),
+      },
+    ],
+  }
+}
 
 /** Play from the selected note, or the beginning; again to stop. */
 function togglePlayback() {
   if (stopPlayback.value) {
-    stopPlayback.value()
+    const stop = stopPlayback.value
+    // Cleared first: the stop reports the end, which must not start a loop again.
     stopPlayback.value = null
+    stop()
     return
   }
   if (!noteCount.value) return
-  stopPlayback.value = playScore(score.value, context.value.instrument, {
+  startPlayback(loopMeasure.value ? (currentMeasure.value ?? 0) : null, true)
+}
+
+function startPlayback(loopIndex: number | null, first: boolean) {
+  const source = loopIndex === null ? score.value : measureOnly(loopIndex)
+  stopPlayback.value = playScore(source, context.value.instrument, {
     tempo: tempo.value,
     metronome: metronome.value,
-    countIn: countIn.value,
-    startId: selectedId.value,
+    countIn: countIn.value && first,
+    startId: loopIndex === null ? selectedId.value : null,
     onEvent: (id) => {
       playingId.value = id
-      if (id === null) stopPlayback.value = null
+      if (id !== null || !stopPlayback.value) return
+      // The end reached by itself: round again, or done.
+      if (loopIndex !== null && loopMeasure.value) startPlayback(loopIndex, false)
+      else stopPlayback.value = null
     },
   })
 }
@@ -742,8 +893,26 @@ function startRename() {
   titleDraft.value = sheet.value.title
   composerDraft.value = sheet.value.composer
   descriptionDraft.value = sheet.value.description ?? ''
-  renaming.value = true
+  panel.value = 'rename'
 }
+
+/** The new-piece screen saves its title and composer as they are typed. */
+async function saveStartMeta() {
+  if (!sheet.value) return
+  const title = titleDraft.value.trim() || sheet.value.title
+  if (title === sheet.value.title && composerDraft.value === sheet.value.composer) return
+  await store.updateMeta(sheet.value.id, {
+    title,
+    composer: composerDraft.value,
+    description: sheet.value.description ?? '',
+  })
+  sheet.value = (await store.get(sheet.value.id)) ?? sheet.value
+}
+
+/** Leaving with unsaved work asks first: there is no save bar to forget on the way out. */
+onBeforeRouteLeave(() => {
+  if (dirty.value && !window.confirm('Leave without saving your changes?')) return false
+})
 
 async function saveRename() {
   if (!sheet.value) return
@@ -753,7 +922,7 @@ async function saveRename() {
     description: descriptionDraft.value.trim(),
   })
   sheet.value = (await store.get(sheet.value.id)) ?? sheet.value
-  renaming.value = false
+  panel.value = null
 }
 
 
@@ -763,6 +932,7 @@ async function saveRename() {
  * show no fingering until corrected.
  */
 async function convertTo(id: InstrumentId) {
+  panel.value = null
   if (!sheet.value) return
   if (dirty.value) {
     window.alert('Save or discard your changes first.')
@@ -819,119 +989,260 @@ async function deleteSheet() {
   await store.remove(sheet.value.id)
   await router.replace({ name: 'sheets' })
 }
+/** The new-piece screen's three ways in. */
+const startOptions: { title: string; sub: string; icon: string; run: () => void; primary?: boolean }[] = [
+  {
+    title: 'Read notes and rhythm',
+    sub: 'Pitches, durations, measures and repeats — playable in tempo. You check what it found.',
+    icon: 'M3 7V3h4M17 3h4v4M21 17v4h-4M7 21H3v-4M8 15V9l8-2v6',
+    run: () => void detect(true),
+    primary: true,
+  },
+  {
+    title: 'Read pitches only',
+    sub: 'Faster and more forgiving: just the order of the notes, for their fingerings.',
+    icon: 'M3 7V3h4M17 3h4v4M21 17v4h-4M7 21H3v-4M10 14h.01M15 11h.01',
+    run: () => void detect(false),
+  },
+  {
+    title: 'Type them in myself',
+    sub: 'On a keyboard, with the photo a tap away.',
+    icon: 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4',
+    run: toggleEditing,
+  },
+]
+
+// Shared looks, so the template reads as layout.
+const iconButton =
+  'flex h-11 w-11 shrink-0 items-center justify-center text-ink-200 transition-colors hover:text-ink-50 disabled:text-ink-600'
+const tool =
+  'flex h-10 min-w-10 items-center justify-center border border-ink-600 px-1.5 text-sm text-ink-50 transition-colors hover:border-accent-400'
+const fix =
+  'flex h-14 flex-col items-center justify-center gap-0.5 border border-ink-600 text-base text-ink-50 transition-colors hover:border-accent-400'
+const fixLabel = 'text-[10px] font-normal text-ink-400'
+const toggle = 'flex h-12 w-12 shrink-0 items-center justify-center border transition-colors'
+const toggleOn = 'border-accent-400 bg-ink-800 text-accent-300'
+const toggleOff = 'border-ink-600 text-ink-200 hover:border-ink-400'
+const label = 'text-[11px] font-semibold uppercase tracking-wider text-ink-400'
+const field =
+  'h-11 w-full border border-ink-600 bg-ink-950 px-3 text-sm text-ink-50 placeholder:text-ink-600 focus:border-accent-400 focus:outline-none'
+const row = 'flex min-h-14 items-center gap-2 border-b border-ink-800 px-4 py-2'
+const small =
+  'h-10 min-w-11 shrink-0 border border-ink-600 px-2.5 text-xs font-semibold text-ink-50 transition-colors hover:border-accent-400 disabled:opacity-40'
 </script>
 
 <template>
-  <div v-if="sheet" class="space-y-5">
-    <RouterLink
-      :to="{ name: 'sheets' }"
-      class="inline-flex items-center gap-1 text-xs font-medium text-ink-400 hover:text-ink-200"
-    >
-      <span aria-hidden="true">←</span> Sheet music
-    </RouterLink>
+  <div v-if="sheet" class="flex h-svh flex-col">
+    <!-- Top bar. Reading: back, title, photo, edit, more. Editing: close,
+         the measure, undo/redo and save. -->
+    <header class="flex h-14 shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 px-1 md:px-0">
+      <template v-if="editing">
+        <button type="button" :class="iconButton" aria-label="Close the editor" @click="closeEditor">
+          <svg viewBox="0 0 24 24" class="h-[22px] w-[22px]" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="flex h-11 min-w-0 flex-1 items-center gap-1.5 px-1 text-left text-[15px] font-semibold text-ink-50"
+          @click="panel = 'measure'"
+        >
+          <span class="truncate">Measure {{ toolMeasure + 1 }}</span>
+          <svg viewBox="0 0 24 24" class="h-3 w-3 shrink-0 text-ink-400" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+          <span v-if="offMeasures" class="h-2 w-2 shrink-0 bg-amber-400" aria-label="Some measures don’t add up" />
+        </button>
+        <button type="button" :class="iconButton" aria-label="Undo" title="Undo (Ctrl+Z)" :disabled="!history.length" @click="undo">
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+            <path d="M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3" />
+          </svg>
+        </button>
+        <button type="button" :class="iconButton" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" :disabled="!future.length" @click="redo">
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+            <path d="M15 14l5-5-5-5M20 9H9a5 5 0 0 0 0 10h3" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="ml-1 h-9 shrink-0 bg-accent-400 px-4 text-sm font-bold text-ink-950 transition-colors hover:bg-accent-300 disabled:opacity-50"
+          :disabled="saving"
+          @click="dirty ? save() : (editing = false)"
+        >
+          {{ saving ? 'Saving…' : dirty ? 'Save' : 'Done' }}
+        </button>
+      </template>
 
-    <header v-if="!renaming" class="flex items-start justify-between gap-4">
-      <button type="button" class="min-w-0 text-left" @click="startRename">
-        <h1 class="truncate text-xl">{{ sheet.title }}</h1>
-        <p class="mt-0.5 truncate text-sm text-ink-400">
-          {{ sheet.composer || 'Tap to add a title, composer or description' }}
-        </p>
-        <p v-if="sheet.description" class="mt-1.5 text-sm whitespace-pre-line text-ink-200">
-          {{ sheet.description }}
-        </p>
-      </button>
-      <div class="flex shrink-0 gap-2">
+      <template v-else>
+        <RouterLink :to="{ name: 'sheets' }" :class="iconButton" aria-label="Back to sheet music">
+          <svg viewBox="0 0 24 24" class="h-[22px] w-[22px]" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </RouterLink>
+        <button type="button" class="min-w-0 flex-1 text-left" @click="startRename">
+          <h1 class="truncate text-base">{{ sheet.title }}</h1>
+          <p class="truncate text-[11px] text-ink-400">
+            <template v-if="currentMeasure !== null">Measure {{ currentMeasure + 1 }} of {{ score.measures.length }}</template>
+            <template v-else>{{ sheet.composer || context.instrument.name }}</template>
+          </p>
+        </button>
         <button
           v-if="noteCount"
           type="button"
-          class="shrink-0 rounded-lg border border-ink-700 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400"
-          title="Download as MusicXML, for MuseScore, Sibelius, Finale or Dorico"
-          @click="exportMusicXml"
+          :class="[iconButton, view === 'photo' ? 'text-accent-300' : '']"
+          :aria-label="view === 'photo' ? 'Show the score' : 'Show the photo'"
+          :aria-pressed="view === 'photo'"
+          @click="view = view === 'photo' ? 'score' : 'photo'"
         >
-          Export
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path d="M3 4h18v16H3zM3 16l5-5 4 4 3-3 6 6" />
+          </svg>
         </button>
-        <button
-          type="button"
-          class="shrink-0 rounded-lg border border-ink-700 px-3 py-1.5 text-xs font-medium text-ink-400 transition-colors hover:border-red-500/60 hover:text-red-300"
-          @click="deleteSheet"
-        >
-          Delete
+        <button v-if="noteCount" type="button" :class="iconButton" aria-label="Edit notes" @click="toggleEditing">
+          <svg viewBox="0 0 24 24" class="h-[19px] w-[19px]" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+            <path d="M4 20h4L19 9l-4-4L4 16z" />
+          </svg>
         </button>
-      </div>
+        <button type="button" :class="iconButton" aria-label="More" @click="panel = 'menu'">
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor" aria-hidden="true">
+            <circle cx="12" cy="5" r="1.8" />
+            <circle cx="12" cy="12" r="1.8" />
+            <circle cx="12" cy="19" r="1.8" />
+          </svg>
+        </button>
+      </template>
     </header>
 
-    <!-- The instrument this part is written for. Switching rewrites every note
-         into the new instrument's written pitch, so the piece sounds the same. -->
-    <div v-if="!renaming" class="space-y-1.5">
-      <p class="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
-        Notes written for — pick another to transpose
-      </p>
-      <InstrumentMenu
-        :current="context.instrument.id"
-        :options="convertOptions"
-        label="Instrument of this part"
-        class="max-w-xs"
-        @select="convertTo"
-      />
+    <!-- Changes made outside the editor (a fingering, the whole piece an
+         octave, a detection) wait here to be kept or dropped. -->
+    <div
+      v-if="dirty && !editing && !reviewing"
+      class="flex shrink-0 items-center gap-2 border-b border-ink-800 bg-ink-900 px-4 py-2"
+    >
+      <p class="flex-1 text-xs text-ink-200">Unsaved changes</p>
+      <button type="button" class="h-9 border border-ink-600 px-3 text-xs text-ink-200 hover:border-ink-400" @click="discard">
+        Discard
+      </button>
+      <button
+        type="button"
+        class="h-9 bg-accent-400 px-4 text-xs font-bold text-ink-950 hover:bg-accent-300 disabled:opacity-50"
+        :disabled="saving"
+        @click="save"
+      >
+        {{ saving ? 'Saving…' : 'Save' }}
+      </button>
     </div>
 
-    <form v-else class="space-y-2" @submit.prevent="saveRename">
-      <input
-        v-model="titleDraft"
-        type="text"
-        placeholder="Title"
-        aria-label="Title"
-        class="w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-ink-50 placeholder:text-ink-600 focus:border-accent-400 focus:outline-none"
-      />
-      <input
-        v-model="composerDraft"
-        type="text"
-        placeholder="Composer"
-        aria-label="Composer"
-        class="w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-ink-50 placeholder:text-ink-600 focus:border-accent-400 focus:outline-none"
-      />
-      <textarea
-        v-model="descriptionDraft"
-        rows="3"
-        placeholder="Description"
-        aria-label="Description"
-        class="w-full resize-y rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-ink-50 placeholder:text-ink-600 focus:border-accent-400 focus:outline-none"
-      />
-      <div class="flex gap-2">
-        <button
-          type="submit"
-          class="rounded-lg bg-accent-400 px-4 py-2 text-sm font-semibold text-ink-950 transition-colors hover:bg-accent-300"
-        >
-          Save
-        </button>
-        <button
-          type="button"
-          class="rounded-lg border border-ink-600 px-4 py-2 text-sm font-medium text-ink-200 transition-colors hover:border-ink-400"
-          @click="renaming = false"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
+    <div
+      v-if="noteCount && view === 'score' && !editing"
+      class="flex shrink-0 items-center justify-end px-4 pt-2"
+    >
+      <label class="flex cursor-pointer items-center gap-2 text-xs text-ink-200">
+        Note names
+        <input v-model="noteNames" type="checkbox" class="peer sr-only" />
+        <span class="relative inline-block h-5 w-9 bg-ink-700 transition-colors peer-checked:bg-accent-400" aria-hidden="true">
+          <span class="absolute top-0.5 left-0.5 h-4 w-4 bg-ink-950 transition-transform" :class="noteNames ? 'translate-x-4' : ''" />
+        </span>
+      </label>
+    </div>
 
-    <!-- The engraved score, or the photo it came from. Detected notes are
-         boxed on the photo; tapping a box or a note selects it in both. -->
-    <div class="space-y-2">
-      <div role="tablist" aria-label="Show" class="inline-flex rounded-lg border border-ink-700 bg-ink-950 p-0.5">
+    <!-- The page itself: what scrolls. -->
+    <main class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3" aria-label="Score">
+      <!-- Detection: progress, then anything the recogniser wants to warn about. -->
+      <section v-if="recogniser.running.value" class="space-y-2 border border-ink-700 bg-ink-900 p-4">
+        <div class="flex items-center justify-between gap-3">
+          <p class="text-sm text-ink-200">{{ recogniser.stageLabel() }}…</p>
+          <button type="button" class="h-9 shrink-0 px-2 text-xs font-medium text-ink-400 hover:text-ink-200" @click="recogniser.cancel()">
+            Cancel
+          </button>
+        </div>
+        <div class="h-1.5 overflow-hidden bg-ink-800">
+          <div
+            class="h-full bg-accent-400 transition-[width] duration-300"
+            :style="{ width: `${Math.round((recogniser.progress.value?.fraction ?? 0) * 100)}%` }"
+          />
+        </div>
+      </section>
+
+      <p v-if="recogniser.error.value" class="border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        {{ recogniser.error.value }} You can still enter the notes by hand.
+      </p>
+
+      <div
+        v-for="warning in detectionWarnings"
+        :key="warning.code"
+        class="flex items-start gap-3 border border-amber-500/40 bg-amber-500/10 px-3 py-2.5"
+      >
+        <p class="flex-1 text-xs leading-relaxed text-amber-100">{{ warning.message }}</p>
         <button
-          v-for="option in (['score', 'photo'] as const)"
-          :key="option"
           type="button"
-          role="tab"
-          :aria-selected="view === option"
-          class="rounded-md px-3 py-1 text-xs font-semibold transition-colors"
-          :class="view === option ? 'bg-accent-400 text-ink-950' : 'text-ink-400 hover:text-ink-200'"
-          @click="view = option"
+          class="shrink-0 text-[11px] font-medium text-amber-200/70 hover:text-amber-100"
+          @click="detectionWarnings = detectionWarnings.filter((w) => w !== warning)"
         >
-          {{ option === 'score' ? 'Score' : 'Photo' }}
+          Dismiss
         </button>
       </div>
 
+      <OmrDebugView
+        v-if="isDev && recogniser.debug.value"
+        :binarised="recogniser.debug.value.binarised"
+        :staff-removed="recogniser.debug.value.staffRemoved"
+        :eroded="recogniser.debug.value.eroded"
+      />
+
+      <!-- A piece with nothing in it yet: name it, then pick how the notes get in. -->
+      <section v-if="!noteCount && !editing && !recogniser.running.value" class="space-y-4" aria-label="New piece">
+        <div class="flex gap-3">
+          <button
+            v-if="imageUrl"
+            type="button"
+            class="h-32 w-24 shrink-0 overflow-hidden border border-ink-700 bg-ink-50"
+            aria-label="Show the photo"
+            @click="view = view === 'photo' ? 'score' : 'photo'"
+          >
+            <img :src="imageUrl" alt="" class="h-full w-full object-cover object-top" />
+          </button>
+          <div class="min-w-0 flex-1 space-y-2">
+            <label class="block space-y-1">
+              <span :class="label">Title</span>
+              <input v-model="titleDraft" type="text" :class="field" @change="saveStartMeta" />
+            </label>
+            <label class="block space-y-1">
+              <span :class="label">Composer</span>
+              <input v-model="composerDraft" type="text" placeholder="Optional" :class="field" @change="saveStartMeta" />
+            </label>
+          </div>
+        </div>
+
+        <h2 class="pt-1 text-lg">How do you want the notes?</h2>
+        <button
+          v-for="option in startOptions"
+          :key="option.title"
+          type="button"
+          class="flex w-full gap-3.5 border p-3.5 text-left transition-colors"
+          :class="option.primary ? 'border-accent-400 bg-ink-800' : 'border-ink-700 bg-ink-900 hover:border-ink-400'"
+          @click="option.run()"
+        >
+          <span
+            class="flex h-11 w-11 shrink-0 items-center justify-center"
+            :class="option.primary ? 'bg-accent-400 text-ink-950' : 'border border-ink-700 text-accent-400'"
+          >
+            <svg viewBox="0 0 24 24" class="h-[22px] w-[22px]" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+              <path :d="option.icon" />
+            </svg>
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="block text-[15px] font-semibold text-ink-50">{{ option.title }}</span>
+            <span class="mt-0.5 block text-xs leading-relaxed text-ink-400">{{ option.sub }}</span>
+          </span>
+        </button>
+        <p class="text-xs leading-relaxed text-ink-400">
+          Detection works best on a flat scan or screenshot. It is a head start — you can fix anything after.
+        </p>
+      </section>
+
+      <!-- The engraved score, or the photo it came from. Detected notes are
+           boxed on the photo; tapping a box or a note selects it in both. -->
       <ScoreView
         v-if="view === 'score' && (noteCount || editing)"
         :score="score"
@@ -939,18 +1250,15 @@ async function deleteSheet() {
         :flagged="flaggedIds"
         :playing-id="playingId"
         :editing="editing"
-        @select="selectedId = editing ? $event : $event === selectedId ? null : $event"
+        :note-names="noteNames && !editing"
+        @select="selectedId = editing || reviewing ? $event : $event === selectedId ? null : $event"
         @staff-tap="onStaffTap"
       />
-      <p v-if="editing && view === 'score'" class="text-[11px] text-ink-400">
-        Tap a line or space on the staff to put a note there, or pick a pitch below. Tap a note to
-        select it.
+      <p v-if="editing && view === 'score'" class="text-xs text-ink-400">
+        Tap a note to select it. Tap an empty line or space to put a note there.
       </p>
 
-      <div
-        v-if="imageUrl && !(view === 'score' && (noteCount || editing))"
-        class="relative overflow-auto rounded-xl border border-ink-700 bg-ink-50"
-      >
+      <div v-if="imageUrl && view === 'photo'" class="relative overflow-auto border border-ink-700 bg-ink-50">
         <button
           type="button"
           class="block w-full"
@@ -973,411 +1281,369 @@ async function deleteSheet() {
           @select="selectedId = items[$event]?.event.id ?? null"
         />
       </div>
-    </div>
+    </main>
 
-    <!-- Detection: progress, then anything the recogniser wants to warn about. -->
-    <section v-if="recogniser.running.value" class="space-y-2 rounded-xl border border-ink-700 bg-ink-900 p-4">
-      <div class="flex items-center justify-between gap-3">
-        <p class="text-sm text-ink-200">{{ recogniser.stageLabel() }}…</p>
-        <button
-          type="button"
-          class="shrink-0 text-xs font-medium text-ink-400 transition-colors hover:text-ink-200"
-          @click="recogniser.cancel()"
-        >
-          Cancel
-        </button>
+    <!-- Editing: the selected note, the rhythm row and the keyboard. -->
+    <section v-if="editing" class="shrink-0 border-t border-ink-700 bg-ink-900" aria-label="Note entry">
+      <div class="flex items-center gap-1.5 border-b border-ink-800 px-4 py-2">
+        <template v-if="selectedEvent">
+          <span class="min-w-10">
+            <NoteBadge v-if="selectedEvent.kind === 'note'" :note="selectedEvent.pitch" size="sm" />
+            <span v-else class="text-sm text-ink-400">Rest</span>
+          </span>
+          <span class="flex-1" />
+          <template v-if="selectedEvent.kind === 'note'">
+            <button type="button" :class="tool" aria-label="Flat" title="Flat" @click="paletteAccidental(-1)">
+              <span class="smufl">{{ '' }}</span>
+            </button>
+            <button type="button" :class="tool" aria-label="Natural" title="Natural" @click="paletteAccidental(0)">
+              <span class="smufl">{{ '' }}</span>
+            </button>
+            <button type="button" :class="tool" aria-label="Sharp" title="Sharp" @click="paletteAccidental(1)">
+              <span class="smufl">{{ '' }}</span>
+            </button>
+            <button type="button" :class="tool" aria-label="Down a line or space" @click="shiftStep(selectedIndex!, -1)">▼</button>
+            <button type="button" :class="tool" aria-label="Up a line or space" @click="shiftStep(selectedIndex!, 1)">▲</button>
+          </template>
+          <button
+            v-if="score.mode === 'pitches'"
+            type="button"
+            :class="[tool, items[selectedIndex ?? -1]?.barAfter ? 'border-accent-400 text-accent-300' : '']"
+            :aria-pressed="items[selectedIndex ?? -1]?.barAfter ?? false"
+            aria-label="Barline after this note"
+            @click="toggleBar(selectedIndex!)"
+          >
+            |
+          </button>
+          <button type="button" :class="[tool, 'text-red-300']" aria-label="Delete" title="Delete (Del)" @click="paletteRemove">
+            <svg viewBox="0 0 24 24" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+              <path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14" />
+            </svg>
+          </button>
+        </template>
+        <p v-else class="flex h-10 items-center text-xs text-ink-400">
+          {{
+            measureCursor !== null && !selectedId
+              ? `New notes go into measure ${toolMeasure + 1}.`
+              : 'New notes go at the end. Tap a note to change it.'
+          }}
+        </p>
       </div>
-      <div class="h-1.5 overflow-hidden rounded-full bg-ink-800">
-        <div
-          class="h-full rounded-full bg-accent-400 transition-[width] duration-300"
-          :style="{ width: `${Math.round((recogniser.progress.value?.fraction ?? 0) * 100)}%` }"
+      <div class="space-y-3 px-4 pt-3" style="padding-bottom: calc(var(--safe-bottom) + 1rem)">
+        <ScorePalette
+          v-if="score.mode === 'rhythm'"
+          :selected="selectedEvent"
+          :input-duration="inputDuration"
+          @duration="paletteDuration"
+          @dot="paletteDot"
+          @rest="paletteRest"
+          @tie="paletteTie"
+        />
+        <PianoKeyboard
+          :context="context"
+          :flats="keyAt(score, toolMeasure) < 0"
+          :hint="selected ? `adds after ${noteLabel(selected.pitch)}` : 'adds a note'"
+          @add="addNote"
         />
       </div>
     </section>
 
-    <p
-      v-if="recogniser.error.value"
-      class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200"
-    >
-      {{ recogniser.error.value }} You can still enter the notes by hand.
-    </p>
-
-    <section v-if="detectionWarnings.length" class="space-y-2">
-      <div
-        v-for="warning in detectionWarnings"
-        :key="warning.code"
-        class="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3"
-      >
-        <p class="flex-1 text-xs leading-relaxed text-amber-100">{{ warning.message }}</p>
-        <button
-          type="button"
-          class="shrink-0 text-[11px] font-medium text-amber-200/70 transition-colors hover:text-amber-100"
-          @click="detectionWarnings = detectionWarnings.filter((w) => w !== warning)"
-        >
-          Dismiss
-        </button>
-      </div>
-    </section>
-
-    <!-- Dev-only: see what the recogniser saw. Invaluable when a scan reads
-         badly, and the only way to tell which stage went wrong. -->
-    <div v-if="isDev" class="flex items-center gap-2">
-      <label class="flex cursor-pointer items-center gap-2 text-xs text-ink-400">
-        <input v-model="showDebug" type="checkbox" class="h-3.5 w-3.5 accent-accent-400" />
-        Show detection stages on next run
-      </label>
-    </div>
-    <OmrDebugView
-      v-if="isDev && recogniser.debug.value"
-      :binarised="recogniser.debug.value.binarised"
-      :staff-removed="recogniser.debug.value.staffRemoved"
-      :eroded="recogniser.debug.value.eroded"
-    />
-
-    <!-- Key signature. Detection reads it, but it is the single most useful
-         thing to be able to correct: one tap re-spells the whole piece. -->
+    <!-- After a detection: the unsure notes one by one, each beside the spot
+         on the page it was read from. -->
     <section
-      v-if="hasDetected && keyOverride"
-      class="space-y-2 rounded-xl border border-ink-700 bg-ink-900 p-3"
+      v-else-if="reviewing && reviewNote"
+      class="shrink-0 space-y-3 border-t border-ink-700 bg-ink-900 px-4 pt-3"
+      style="padding-bottom: calc(var(--safe-bottom) + 1rem)"
+      aria-label="Check the detected notes"
     >
-      <p class="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
-        Key signature — tap to correct
-      </p>
-      <div class="flex flex-wrap gap-1.5">
+      <svg
+        v-if="reviewCrop"
+        :viewBox="reviewCrop.viewBox"
+        preserveAspectRatio="xMidYMid slice"
+        class="block h-28 w-full bg-ink-50"
+        role="img"
+        aria-label="The spot on the photo this note was read from"
+      >
+        <image :href="imageUrl!" x="0" y="0" :width="reviewCrop.width" :height="reviewCrop.height" />
+        <rect v-bind="reviewCrop.rect" fill="none" stroke="#c77a00" :stroke-width="reviewCrop.stroke" />
+      </svg>
+      <div class="flex items-center gap-2">
+        <button type="button" :class="tool" aria-label="Previous note to check" @click="stepReview(-1)">‹</button>
+        <div class="min-w-0 flex-1 text-center">
+          <p class="text-[11px] font-semibold tracking-wider text-amber-300 uppercase">
+            Unsure · {{ toCheck.length }} left
+          </p>
+          <NoteBadge :note="reviewNote.pitch" size="md" />
+        </div>
+        <button type="button" :class="tool" aria-label="Next note to check" @click="stepReview(1)">›</button>
+      </div>
+      <div class="grid grid-cols-5 gap-1.5">
+        <button type="button" :class="fix" @click="shiftStep(reviewIndex, 1)">▲<span :class="fixLabel">step up</span></button>
+        <button type="button" :class="fix" @click="shiftStep(reviewIndex, -1)">▼<span :class="fixLabel">step down</span></button>
+        <button type="button" :class="fix" @click="shiftSemitone(reviewIndex, -1)">
+          <span class="smufl">{{ '' }}</span><span :class="fixLabel">½ down</span>
+        </button>
+        <button type="button" :class="fix" @click="shiftSemitone(reviewIndex, 1)">
+          <span class="smufl">{{ '' }}</span><span :class="fixLabel">½ up</span>
+        </button>
+        <button type="button" :class="[fix, 'text-red-300']" @click="removeAt(reviewIndex)">
+          ✕<span :class="fixLabel">not a note</span>
+        </button>
+      </div>
+      <div class="flex gap-2">
         <button
-          v-for="choice in KEY_CHOICES"
-          :key="choice.label"
+          v-if="keyOverride"
           type="button"
-          class="h-8 min-w-9 rounded-lg border px-2 text-sm font-semibold transition-colors"
-          :class="
-            isCurrentKey(choice.key)
-              ? 'border-accent-400 bg-accent-400 text-ink-950'
-              : 'border-ink-600 text-ink-200 hover:border-accent-400'
-          "
-          @click="applyKey(choice.key)"
+          class="h-12 shrink-0 border border-ink-600 px-3 text-xs text-ink-200 hover:border-accent-400"
+          @click="panel = 'key'"
         >
-          {{ choice.label }}
+          Key {{ keyLabel }}
+        </button>
+        <button
+          type="button"
+          class="flex h-12 flex-1 items-center justify-center gap-2 bg-accent-400 text-sm font-bold text-ink-950 hover:bg-accent-300"
+          @click="keepReviewed"
+        >
+          <svg viewBox="0 0 24 24" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+            <path d="M5 12l5 5 9-10" />
+          </svg>
+          Looks right
+        </button>
+      </div>
+      <div class="flex gap-2">
+        <button type="button" class="h-10 flex-1 text-xs text-ink-400 hover:text-ink-200" @click="reviewSkipped = true">
+          Skip checking
+        </button>
+        <button
+          type="button"
+          class="h-10 flex-1 border border-ink-600 text-xs font-semibold text-ink-50 hover:border-accent-400 disabled:opacity-50"
+          :disabled="saving"
+          @click="save"
+        >
+          {{ saving ? 'Saving…' : 'Save as is' }}
         </button>
       </div>
     </section>
 
-    <!-- Note sequence -->
-    <section class="space-y-3">
-      <div class="flex items-center justify-between gap-3">
-        <h2 class="text-xs font-semibold uppercase tracking-wider text-ink-400">
-          {{ noteCount }} {{ noteCount === 1 ? 'note' : 'notes' }}
-        </h2>
-        <div class="flex gap-2">
-          <button
-            type="button"
-            class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400 disabled:opacity-50"
-            :disabled="recogniser.running.value"
-            title="Read the pitches off the photo"
-            @click="detect(false)"
-          >
-            Detect notes
-          </button>
-          <button
-            type="button"
-            class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400 disabled:opacity-50"
-            :disabled="recogniser.running.value"
-            title="Read pitches and durations, measures, repeats and marks"
-            @click="detect(true)"
-          >
-            Detect with rhythm
-          </button>
-          <button
-            type="button"
-            class="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-accent-400"
-            @click="toggleEditing"
-          >
-            {{ editing ? 'Done editing' : noteCount ? 'Edit' : 'Note it down' }}
-          </button>
-        </div>
+    <!-- Reading: the fingering of every note, and the player. -->
+    <section v-else-if="noteCount" class="shrink-0 border-t border-ink-700 bg-ink-900" aria-label="Fingerings and playback">
+      <div class="flex items-baseline justify-between px-4 pt-2.5 pb-1.5">
+        <h2 :class="label">Fingerings</h2>
+        <span class="text-[11px] text-ink-400">
+          {{ selectedId && !playingId ? 'tap again for alternatives' : 'tap a note to hear it' }}
+        </span>
       </div>
-
-      <!-- Playback: from the selected note, at a practice tempo, with an
-           optional metronome and a measure counted in. -->
+      <FingeringStrip
+        :entries="stripEntries"
+        :focus-id="playingId ?? selectedId"
+        :flagged="flaggedIds"
+        :instrument="context.instrument"
+        @select="onStripSelect"
+      />
       <div
-        v-if="noteCount && settings.audioEnabled"
-        class="flex flex-wrap items-center gap-2 rounded-xl border border-ink-700 bg-ink-900 p-2"
+        v-if="settings.audioEnabled"
+        class="flex items-center gap-2 border-t border-ink-800 px-4 pt-2.5"
+        style="padding-bottom: calc(var(--safe-bottom) + 1rem)"
         aria-label="Playback"
       >
         <button
           type="button"
-          class="flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors"
+          class="flex h-12 w-14 shrink-0 items-center justify-center transition-colors"
           :class="stopPlayback ? 'bg-ink-50 text-ink-950' : 'bg-accent-400 text-ink-950 hover:bg-accent-300'"
+          :aria-label="stopPlayback ? 'Stop' : selectedId ? 'Play from the selected note' : 'Play'"
           @click="togglePlayback"
         >
-          {{ stopPlayback ? '■ Stop' : selectedId ? '▶ Play from note' : '▶ Play' }}
+          <svg v-if="stopPlayback" viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor" aria-hidden="true">
+            <rect x="5" y="5" width="14" height="14" />
+          </svg>
+          <svg v-else viewBox="0 0 24 24" class="h-[18px] w-[18px]" fill="currentColor" aria-hidden="true">
+            <path d="M7 4l13 8-13 8z" />
+          </svg>
         </button>
-        <div class="flex items-center gap-1" aria-label="Tempo">
-          <button
-            type="button"
-            class="h-9 w-8 rounded-lg border border-ink-600 text-sm text-ink-200 hover:border-accent-400"
-            aria-label="Slower"
-            @click="nudgeTempo(-5)"
-          >
-            −
-          </button>
-          <label class="flex items-center gap-1 text-xs text-ink-400">
+        <div class="flex h-12 min-w-0 flex-1 items-center border border-ink-600" aria-label="Tempo">
+          <button type="button" class="h-full w-11 shrink-0 text-xl text-ink-200" aria-label="Slower" @click="nudgeTempo(-5)">−</button>
+          <label class="flex min-w-0 flex-1 items-baseline justify-center gap-1">
             <input
               v-model.number="tempo"
               type="number"
               min="30"
               max="240"
-              class="h-9 w-14 rounded-lg border border-ink-600 bg-ink-950 px-1.5 text-center text-sm text-ink-50"
+              class="w-10 bg-transparent text-center text-[15px] font-bold text-ink-50 [appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none"
               aria-label="Tempo in beats per minute"
             />
-            BPM
+            <span class="text-[11px] text-ink-400">BPM</span>
           </label>
-          <button
-            type="button"
-            class="h-9 w-8 rounded-lg border border-ink-600 text-sm text-ink-200 hover:border-accent-400"
-            aria-label="Faster"
-            @click="nudgeTempo(5)"
-          >
-            +
-          </button>
+          <button type="button" class="h-full w-11 shrink-0 text-xl text-ink-200" aria-label="Faster" @click="nudgeTempo(5)">+</button>
         </div>
-        <label class="flex cursor-pointer items-center gap-1.5 text-xs text-ink-200">
-          <input v-model="metronome" type="checkbox" class="h-4 w-4 accent-accent-400" />
-          Metronome
-        </label>
-        <label class="flex cursor-pointer items-center gap-1.5 text-xs text-ink-200">
-          <input v-model="countIn" type="checkbox" class="h-4 w-4 accent-accent-400" />
-          Count in
-        </label>
+        <button
+          type="button"
+          :class="[toggle, loopMeasure ? toggleOn : toggleOff]"
+          :aria-pressed="loopMeasure"
+          aria-label="Loop the selected measure"
+          title="Loop the selected measure"
+          @click="loopMeasure = !loopMeasure"
+        >
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+            <path d="M17 2l3 3-3 3M4 11V9a4 4 0 0 1 4-4h12M7 22l-3-3 3-3M20 13v2a4 4 0 0 1-4 4H4" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          :class="[toggle, metronome ? toggleOn : toggleOff]"
+          :aria-pressed="metronome"
+          aria-label="Metronome"
+          title="Metronome"
+          @click="metronome = !metronome"
+        >
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path d="M9 3h6l4 18H5zM12 15l5-7M7 15h10" />
+          </svg>
+        </button>
+      </div>
+      <div v-else style="height: calc(var(--safe-bottom) + 0.5rem)" />
+    </section>
+
+    <!-- ── Bottom sheets ─────────────────────────────────────────────────── -->
+    <BottomSheet :open="panel === 'menu'" label="Piece options" @close="panel = null">
+      <div class="flex items-start gap-3 border-b border-ink-800 px-4 pb-3.5">
+        <div class="min-w-0 flex-1">
+          <h2 class="text-lg">{{ sheet.title }}</h2>
+          <p class="text-xs text-ink-400">
+            {{ [sheet.composer, `${noteCount} ${noteCount === 1 ? 'note' : 'notes'}`, `${score.measures.length} measures`].filter(Boolean).join(' · ') }}
+          </p>
+          <p v-if="sheet.description" class="mt-1.5 text-xs whitespace-pre-line text-ink-200">{{ sheet.description }}</p>
+        </div>
+        <button type="button" class="h-9 shrink-0 border border-ink-600 px-3 text-xs text-ink-50" @click="startRename">Rename</button>
       </div>
 
-      <!-- Pitches only, or with rhythm: durations are kept while hidden. -->
-      <div v-if="noteCount || editing" role="radiogroup" aria-label="Notation" class="flex flex-wrap items-center gap-2">
-        <div class="inline-flex rounded-lg border border-ink-700 bg-ink-950 p-0.5">
+      <div v-if="noteCount" :class="row">
+        <span class="flex-1 text-[15px] text-ink-50">Notation</span>
+        <div role="radiogroup" aria-label="Notation" class="flex border border-ink-600">
           <button
             v-for="mode in (['pitches', 'rhythm'] as const)"
             :key="mode"
             type="button"
             role="radio"
             :aria-checked="score.mode === mode"
-            class="rounded-md px-3 py-1 text-xs font-semibold transition-colors"
-            :class="score.mode === mode ? 'bg-accent-400 text-ink-950' : 'text-ink-400 hover:text-ink-200'"
+            class="h-9 px-3 text-xs"
+            :class="score.mode === mode ? 'bg-accent-400 font-semibold text-ink-950' : 'text-ink-400'"
             @click="setMode(mode)"
           >
             {{ mode === 'pitches' ? 'Pitches only' : 'With rhythm' }}
           </button>
         </div>
-        <span class="text-[11px] text-ink-400">
-          {{
-            score.mode === 'pitches'
-              ? 'Order of notes only — no durations.'
-              : 'Durations, measures and time signature.'
-          }}
+      </div>
+
+      <label v-if="noteCount && settings.audioEnabled" :class="[row, 'cursor-pointer']">
+        <span class="flex-1 text-[15px] text-ink-50">Count in a measure before playing</span>
+        <input v-model="countIn" type="checkbox" class="h-5 w-5 accent-accent-400" />
+      </label>
+
+      <button type="button" :class="[row, 'w-full text-left']" @click="panel = 'instrument'">
+        <span class="min-w-0 flex-1">
+          <span class="block text-[15px] text-ink-50">Rewrite for another instrument</span>
+          <span class="block text-xs text-ink-400">Now: {{ context.instrument.name }} · sounds the same after</span>
         </span>
+        <span class="text-ink-600" aria-hidden="true">›</span>
+      </button>
+
+      <button v-if="hasDetected && keyOverride" type="button" :class="[row, 'w-full text-left']" @click="panel = 'key'">
+        <span class="min-w-0 flex-1">
+          <span class="block text-[15px] text-ink-50">Key signature: {{ keyLabel }}</span>
+          <span class="block text-xs text-ink-400">Read wrong? One tap re-spells every detected note.</span>
+        </span>
+        <span class="text-ink-600" aria-hidden="true">›</span>
+      </button>
+
+      <div :class="row">
+        <span class="min-w-0 flex-1">
+          <span class="block text-[15px] text-ink-50">{{ noteCount ? 'Detect notes again' : 'Detect notes' }}</span>
+          <span class="block text-xs text-ink-400">{{ noteCount ? 'Replaces the notes with a fresh read' : 'Read them off the photo' }}</span>
+        </span>
+        <button type="button" :class="small" :disabled="recogniser.running.value" @click="detect(true)">Rhythm</button>
+        <button type="button" :class="small" :disabled="recogniser.running.value" @click="detect(false)">Pitches</button>
+      </div>
+      <label v-if="isDev" :class="[row, 'cursor-pointer text-xs text-ink-400']">
+        <input v-model="showDebug" type="checkbox" class="h-4 w-4 accent-accent-400" />
+        Show detection stages on next run (dev)
+      </label>
+
+      <div v-if="noteCount" :class="row">
+        <span class="flex-1 text-[15px] text-ink-50">Whole piece an octave</span>
+        <button type="button" :class="small" aria-label="Every note down an octave" @click="shiftAllOctaves(-1)">▼</button>
+        <button type="button" :class="small" aria-label="Every note up an octave" @click="shiftAllOctaves(1)">▲</button>
       </div>
 
-      <!-- Whole-sequence edits. They only touch the draft, so Discard undoes them. -->
-      <div v-if="noteCount" class="flex flex-wrap gap-1.5" aria-label="Edit all notes">
-        <button
-          type="button"
-          title="Move every note down an octave"
-          class="rounded-md border border-ink-600 px-2 py-1 text-[11px] font-medium text-ink-200 transition-colors hover:border-accent-400"
-          @click="shiftAllOctaves(-1)"
-        >
-          All ▼ octave
-        </button>
-        <button
-          type="button"
-          title="Move every note up an octave"
-          class="rounded-md border border-ink-600 px-2 py-1 text-[11px] font-medium text-ink-200 transition-colors hover:border-accent-400"
-          @click="shiftAllOctaves(1)"
-        >
-          All ▲ octave
-        </button>
-        <button
-          type="button"
-          title="Remove every note"
-          class="ml-auto rounded-md border border-ink-600 px-2 py-1 text-[11px] font-medium text-ink-400 transition-colors hover:border-red-500/60 hover:text-red-300"
-          @click="clearAll"
-        >
-          Clear all
-        </button>
-      </div>
+      <button v-if="noteCount" type="button" :class="[row, 'w-full text-left text-[15px] text-ink-50']" @click="exportMusicXml(); panel = null">
+        Export MusicXML
+      </button>
+      <button v-if="noteCount" type="button" :class="[row, 'w-full text-left text-[15px] text-ink-50']" @click="panel = null; clearAll()">
+        Clear all notes
+      </button>
+      <button type="button" :class="[row, 'w-full border-b-0 text-left text-[15px] text-red-300']" @click="panel = null; deleteSheet()">
+        Delete piece
+      </button>
+    </BottomSheet>
 
-      <div
-        v-if="!noteCount && !editing"
-        class="space-y-2 rounded-xl border border-dashed border-ink-700 px-4 py-8 text-center"
-      >
-        <p class="text-sm text-ink-400">
-          Tap <strong class="text-ink-200">Detect notes</strong> to read them off the page
-          automatically, or <strong class="text-ink-200">Note it down</strong> to enter them
-          yourself.
+    <BottomSheet :open="panel === 'instrument'" label="Rewrite for another instrument" @close="panel = null">
+      <div class="space-y-3 px-4">
+        <h2 class="text-lg">Written for</h2>
+        <p class="text-xs leading-relaxed text-ink-400">
+          Pick another instrument and every note is rewritten in its written pitch, so the piece sounds the same.
         </p>
-        <p class="text-xs text-ink-600">
-          Detection works best on a flat scan or screenshot. Check what it finds — it is a
-          head start, not the last word.
-        </p>
-      </div>
-
-    </section>
-
-    <!-- Photo view: the note strip as it always was, with the selected
-         note's fingering beside it so it stays in view while tapping through
-         the notes. -->
-    <div v-if="view === 'photo' && noteCount" class="flex items-start gap-3">
-      <ol class="flex min-w-0 flex-1 flex-wrap gap-1.5">
-        <template v-for="entry in resolved" :key="entry.event.id">
-          <li v-if="entry.note">
-            <button
-              type="button"
-              class="flex min-w-11 flex-col items-center rounded-lg border px-2 py-1.5 transition-colors"
-              :class="
-                selectedId === entry.event.id
-                  ? 'border-accent-400 bg-ink-800'
-                  : 'border-ink-700 bg-ink-900 hover:border-ink-400'
-              "
-              @click="selectedId = selectedId === entry.event.id ? null : entry.event.id"
-            >
-              <NoteBadge :note="entry.note.pitch" size="sm" />
-              <span v-if="!entry.chosen" class="text-[10px] text-amber-300">?</span>
-              <!-- A dot marks a note the recogniser was unsure about, so attention
-                   goes where it is actually needed rather than note by note. -->
-              <span
-                v-else-if="flaggedIds.includes(entry.event.id)"
-                class="text-[10px] leading-none text-amber-300"
-                :aria-label="`${entry.note.pitch} needs checking`"
-                >•</span
-              >
-            </button>
-          </li>
-          <li v-if="entry.barAfter" class="w-0.5 self-stretch rounded-full bg-accent-300" aria-label="Divider" />
-        </template>
-      </ol>
-
-      <aside
-        v-if="selected"
-        class="sticky top-18 flex shrink-0 flex-col items-center gap-1.5 rounded-xl border border-ink-700 bg-ink-900 p-2 md:top-4"
-        :aria-label="`Fingering for ${selected.pitch}`"
-      >
-        <NoteBadge :note="selected.pitch" size="md" />
-        <KeyChart
-          v-if="selected.chosen"
-          :keys="selected.chosen.keys"
-          :partial="selected.chosen.partial"
-          :instrument="context.instrument"
-          size="sm"
-        />
-        <p v-else class="w-20 text-center text-[11px] text-amber-200">No fingering</p>
-      </aside>
-    </div>
-
-    <!-- Detail for the selected note. Deliberately above the keypad: while
-         transcribing, the fingering you just entered must stay in view without
-         scrolling past the buttons you are tapping. -->
-    <section
-      v-if="selected"
-      class="space-y-3 rounded-xl border border-ink-700 bg-ink-900 p-4"
-      :aria-label="`Details for ${selected.pitch}`"
-    >
-      <div class="flex items-center gap-3">
-        <StaffPosition :note="selected.pitch" size="sm" class="shrink-0" />
-        <NoteBadge :note="selected.pitch" size="md" />
-        <span class="text-xs text-ink-400">note {{ (selectedIndex ?? 0) + 1 }}</span>
-        <button
-          type="button"
-          class="ml-auto text-xs font-medium text-ink-400 transition-colors hover:text-red-300"
-          @click="removeAt(selectedIndex!)"
-        >
-          Remove
-        </button>
-      </div>
-
-      <!-- One-tap fixes for what detection most often gets wrong. -->
-      <div class="flex flex-wrap gap-1.5" aria-label="Correct this note">
-        <button
-          v-for="fix in [
-            { label: '♭ −½', title: 'Down a semitone', run: () => shiftSemitone(selectedIndex!, -1) },
-            { label: '♯ +½', title: 'Up a semitone', run: () => shiftSemitone(selectedIndex!, 1) },
-            { label: '▼ step', title: 'Down a line or space', run: () => shiftStep(selectedIndex!, -1) },
-            { label: '▲ step', title: 'Up a line or space', run: () => shiftStep(selectedIndex!, 1) },
-            { label: '8vb', title: 'Down an octave', run: () => shiftSemitone(selectedIndex!, -12) },
-            { label: '8va', title: 'Up an octave', run: () => shiftSemitone(selectedIndex!, 12) },
-            { label: '+ after', title: 'Insert a note after this one', run: () => insertAfter(selectedIndex!) },
-            {
-              label: selected.barAfter ? '− divider' : '| divider',
-              title: selected.barAfter ? 'Remove the divider after this note' : 'Add a divider after this note',
-              run: () => toggleBar(selectedIndex!),
-            },
-          ]"
-          :key="fix.label"
-          type="button"
-          :title="fix.title"
-          class="rounded-md border border-ink-600 px-2 py-1 text-[11px] font-medium text-ink-200 transition-colors hover:border-accent-400"
-          @click="fix.run()"
-        >
-          {{ fix.label }}
-        </button>
-      </div>
-
-      <div v-if="selected.chosen" class="flex gap-4">
-        <KeyChart
-          :keys="selected.chosen.keys"
-          :partial="selected.chosen.partial"
-          :instrument="context.instrument"
-          size="sm"
-          class="shrink-0"
-        />
-        <div class="min-w-0 flex-1 space-y-2">
-          <p class="font-mono text-xs break-words text-ink-200">
-            {{ prettyCode(selected.chosen.code) }}
-          </p>
-          <p v-if="selected.chosen.comment" class="text-xs leading-relaxed text-ink-400">
-            {{ selected.chosen.comment }}
-          </p>
-
-          <!-- Alternates, so an awkward passage can use a different fingering. -->
-          <div v-if="selected.options.length > 1" class="space-y-1.5 pt-1">
-            <p class="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
-              Use instead
-            </p>
-            <div class="flex flex-wrap gap-1.5">
-              <button
-                v-for="option in selected.options"
-                :key="option.id"
-                type="button"
-                class="rounded-md border px-2 py-1 text-[11px] font-medium transition-colors"
-                :class="
-                  option.id === selected.chosen.id
-                    ? 'border-accent-400 bg-accent-400 text-ink-950'
-                    : 'border-ink-600 text-ink-200 hover:border-accent-400'
-                "
-                @click="chooseFingering(selectedIndex!, option)"
-              >
-                {{ option.kind }}
-              </button>
-            </div>
-          </div>
-
-          <RouterLink
-            :to="{ name: 'note', params: { note: canonicalNote(selected.chosen.midi) } }"
-            class="inline-block pt-1 text-xs font-medium text-accent-400 hover:text-accent-300"
+        <div class="space-y-1.5">
+          <button
+            v-for="id in convertOptions"
+            :key="id"
+            type="button"
+            class="flex h-12 w-full items-center justify-between border px-3 text-left text-sm"
+            :class="id === context.instrument.id ? 'border-accent-400 bg-ink-800 text-ink-50' : 'border-ink-700 text-ink-200 hover:border-ink-400'"
+            :aria-current="id === context.instrument.id ? 'true' : undefined"
+            @click="id === context.instrument.id ? (panel = null) : convertTo(id)"
           >
-            Open in note library →
-          </RouterLink>
+            {{ CATALOG[id].name }}
+            <span v-if="id === context.instrument.id" class="text-xs text-accent-300">current</span>
+          </button>
+        </div>
+        <RouterLink :to="{ name: 'settings' }" class="inline-block py-2 text-xs text-accent-400">
+          More instruments in Setup →
+        </RouterLink>
+      </div>
+    </BottomSheet>
+
+    <BottomSheet :open="panel === 'rename'" label="Title and description" @close="panel = null">
+      <form class="space-y-2.5 px-4" @submit.prevent="saveRename">
+        <h2 class="text-lg">Title and description</h2>
+        <input v-model="titleDraft" type="text" placeholder="Title" aria-label="Title" :class="field" />
+        <input v-model="composerDraft" type="text" placeholder="Composer" aria-label="Composer" :class="field" />
+        <textarea v-model="descriptionDraft" rows="3" placeholder="Description" aria-label="Description" :class="[field, 'h-auto resize-y py-2']" />
+        <div class="flex gap-2 pt-1">
+          <button type="submit" class="h-12 flex-1 bg-accent-400 text-sm font-semibold text-ink-950 hover:bg-accent-300">Save</button>
+          <button type="button" class="h-12 border border-ink-600 px-5 text-sm text-ink-200" @click="panel = null">Cancel</button>
+        </div>
+      </form>
+    </BottomSheet>
+
+    <BottomSheet :open="panel === 'key'" label="Key signature" @close="panel = null">
+      <div class="space-y-3 px-4">
+        <h2 class="text-lg">Key signature</h2>
+        <p class="text-xs leading-relaxed text-ink-400">Detection read it from the page. Tap the right one to re-spell every detected note.</p>
+        <div class="grid grid-cols-5 gap-1.5">
+          <button
+            v-for="choice in KEY_CHOICES"
+            :key="choice.label"
+            type="button"
+            class="h-12 border text-sm font-semibold transition-colors"
+            :class="isCurrentKey(choice.key) ? 'border-accent-400 bg-accent-400 text-ink-950' : 'border-ink-600 text-ink-50 hover:border-accent-400'"
+            @click="applyKey(choice.key); panel = null"
+          >
+            {{ choice.label }}
+          </button>
         </div>
       </div>
+    </BottomSheet>
 
-      <p v-else class="text-sm text-amber-200">
-        No fingering on record for {{ noteLabel(selected.pitch) }} with your instrument setup.
-      </p>
-    </section>
-
-    <template v-if="editing">
-      <NotePicker
-        :context="context"
-        :can-bar="items.length > 0"
-        @add="addNote"
-        @bar="toggleBar(selectedIndex !== null && selectedIndex >= 0 ? selectedIndex : items.length - 1)"
-      />
+    <BottomSheet :open="panel === 'measure'" label="Measure" @close="panel = null">
       <MeasureTools
         :score="score"
         :measure-index="toolMeasure"
@@ -1386,72 +1652,70 @@ async function deleteSheet() {
         @fix="score = rebarFrom(score, Math.max(0, firstOffMeasure(score)))"
         @add-measure="addMeasureAfter"
         @remove-measure="removeMeasure"
+        @move="moveMeasure"
       />
-    </template>
+    </BottomSheet>
 
-    <!-- The palette and the save bar stay at hand while scrolling the score. -->
-    <div v-if="editing || dirty" class="sticky bottom-24 space-y-2 md:bottom-4">
-      <ScorePalette
-        v-if="editing"
-        :mode="score.mode"
-        :selected="selectedEvent"
-        :input-duration="inputDuration"
-        :can-undo="history.length > 0"
-        :can-redo="future.length > 0"
-        @duration="paletteDuration"
-        @dot="paletteDot"
-        @rest="paletteRest"
-        @tie="paletteTie"
-        @accidental="paletteAccidental"
-        @remove="paletteRemove"
-        @undo="undo"
-        @redo="redo"
-      />
-      <div v-if="dirty" class="flex gap-2">
-        <button
-          type="button"
-          class="flex-1 rounded-lg bg-accent-400 px-4 py-2.5 text-sm font-semibold text-ink-950 shadow-lg shadow-ink-950/50 transition-colors hover:bg-accent-300 disabled:opacity-50"
-          :disabled="saving"
-          @click="save"
-        >
-          {{ saving ? 'Saving…' : 'Save' }}
-        </button>
-        <button
-          type="button"
-          class="rounded-lg border border-ink-600 bg-ink-900 px-4 py-2.5 text-sm font-medium text-ink-200 shadow-lg shadow-ink-950/50 transition-colors hover:border-ink-400"
-          @click="discard"
-        >
-          Discard
-        </button>
-      </div>
-    </div>
-
-    <!-- Score view: the note sounding (while playing) or the one selected,
-         with its fingering — always in view, wherever the score is scrolled.
-         Top right on a phone, clear of the editing palette at the bottom. -->
-    <aside
-      v-if="floating"
-      class="fixed top-16 right-3 z-30 flex items-center gap-2 rounded-xl border bg-ink-900/95 p-2 shadow-xl backdrop-blur md:top-auto md:right-6 md:bottom-6"
-      :class="floating.playing ? 'border-accent-400' : 'border-ink-600'"
-      aria-live="polite"
-      :aria-label="`${floating.playing ? 'Playing' : 'Fingering for'} ${floating.pitch}`"
-    >
-      <NoteBadge :note="floating.pitch" size="md" />
-      <KeyChart
-        v-if="floating.fingering"
-        :keys="floating.fingering.keys"
-        :partial="floating.fingering.partial"
-        :instrument="context.instrument"
-        size="sm"
-      />
-      <p v-else class="w-16 text-center text-[11px] text-amber-200">No fingering</p>
-    </aside>
+    <!-- A note's fingering in full: the chart, its code and notes, and the
+         alternatives for an awkward passage. -->
+    <BottomSheet :open="panel === 'fingering' && !!selected" label="Fingering" @close="panel = null">
+      <section v-if="selected" class="space-y-4 px-4" :aria-label="`Fingering for ${selected.pitch}`">
+        <div class="flex items-center gap-3">
+          <NoteBadge :note="selected.pitch" size="lg" />
+          <span class="text-xs text-ink-400">note {{ (selectedIndex ?? 0) + 1 }} of {{ items.length }}</span>
+        </div>
+        <div v-if="selected.chosen" class="flex gap-4">
+          <KeyChart
+            :keys="selected.chosen.keys"
+            :partial="selected.chosen.partial"
+            :instrument="context.instrument"
+            size="md"
+            class="shrink-0"
+          />
+          <div class="min-w-0 flex-1 space-y-3">
+            <p class="font-mono text-xs break-words text-ink-200">{{ prettyCode(selected.chosen.code) }}</p>
+            <p v-if="selected.chosen.comment" class="text-xs leading-relaxed text-ink-400">{{ selected.chosen.comment }}</p>
+            <div v-if="selected.options.length > 1" class="space-y-1.5">
+              <p :class="label">Use instead</p>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="option in selected.options"
+                  :key="option.id"
+                  type="button"
+                  class="h-9 border px-3 text-xs font-medium transition-colors"
+                  :class="option.id === selected.chosen.id ? 'border-accent-400 bg-accent-400 text-ink-950' : 'border-ink-600 text-ink-200 hover:border-accent-400'"
+                  @click="chooseFingering(selectedIndex!, option)"
+                >
+                  {{ option.kind }}
+                </button>
+              </div>
+            </div>
+            <RouterLink
+              :to="{ name: 'note', params: { note: canonicalNote(selected.chosen.midi) } }"
+              class="inline-block py-1 text-xs font-medium text-accent-400 hover:text-accent-300"
+            >
+              Open in note library →
+            </RouterLink>
+          </div>
+        </div>
+        <p v-else class="text-sm text-amber-200">
+          No fingering on record for {{ noteLabel(selected.pitch) }} with your instrument setup.
+        </p>
+      </section>
+    </BottomSheet>
   </div>
-  <p
-    v-else-if="instrumentMissing"
-    class="rounded-xl border border-ink-700 bg-ink-900 px-4 py-6 text-sm text-ink-400"
-  >
-    This sheet is written for the {{ CATALOG[instrumentMissing].noun }}, which hasn’t been downloaded to
-    this device yet. Connect to the internet and open it again.
+  <p v-else-if="instrumentMissing" class="m-4 border border-ink-700 bg-ink-900 px-4 py-6 text-sm text-ink-400">
+    This sheet is written for the {{ CATALOG[instrumentMissing].noun }}, which hasn’t been downloaded to this device
+    yet. Connect to the internet and open it again.
   </p>
 </template>
+
+<style scoped>
+/* SMuFL accidentals from Bravura, the font the score is engraved with. */
+.smufl {
+  font-family: Bravura, serif;
+  font-size: 22px;
+  line-height: 1;
+  transform: translateY(0.12em);
+}
+</style>
