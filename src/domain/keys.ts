@@ -37,7 +37,7 @@ export type KeyShape = 'hole' | 'lever'
  * is the set of these they have; a fingering is playable when its
  * requirements are all covered.
  */
-export type Requirement = 'bFoot' | 'openHole' | 'highFSharp'
+export type Requirement = 'bFoot' | 'openHole' | 'highFSharp' | 'lowA'
 
 export interface InstrumentKey {
   id: KeyId

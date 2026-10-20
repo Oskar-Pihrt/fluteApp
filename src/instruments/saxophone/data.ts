@@ -34,6 +34,7 @@ const SAX_KEY_ORDER: readonly SaxKeyId[] = [
   'HIGH_FSHARP',
   'ALT_FSHARP',
   'LOW_C',
+  'LOW_A',
 ]
 
 /** Keywork, chart and fingerings shared by every saxophone — loaded on demand. */

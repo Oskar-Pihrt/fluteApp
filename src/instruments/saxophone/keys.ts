@@ -1,8 +1,9 @@
 import type { InstrumentKey, KeyGroup } from '@/domain/keys'
 
 /**
- * The keys of a modern alto or tenor saxophone (with high F♯ key). The two
- * share their keywork exactly — only the size and the pitch differ.
+ * The keys of a modern saxophone (with high F♯ key). Every size shares this
+ * keywork — only the size and the pitch differ — except the baritone's low A
+ * key, which the other sizes leave out (`omitKeys` in the catalog).
  *
  * The six main finger keys and the left pinky G♯ reuse the flute's ids — they
  * play the same role — while everything else is saxophone-only.
@@ -39,6 +40,8 @@ export const SAX_KEY_IDS = [
   // Right pinky
   'R_EFLAT',
   'LOW_C',
+  // Baritone only: low A, under the left thumb
+  'LOW_A',
 ] as const
 
 export type SaxKeyId = (typeof SAX_KEY_IDS)[number]
@@ -81,6 +84,16 @@ export const SAX_KEYS: readonly InstrumentKey[] = [
 
   { id: 'R_EFLAT', label: 'E♭', name: 'Right pinky low E♭ key', hand: 'right', group: 'rightPinky', shape: 'lever' },
   { id: 'LOW_C', label: 'C', name: 'Right pinky low C key', hand: 'right', group: 'rightPinky', shape: 'lever' },
+
+  {
+    id: 'LOW_A',
+    label: 'A',
+    name: 'Low A key (baritone, left thumb)',
+    hand: 'left',
+    group: 'thumb',
+    shape: 'lever',
+    requires: 'lowA',
+  },
 ]
 
 /**

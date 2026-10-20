@@ -61,6 +61,8 @@ const DRAWINGS: Record<SaxKeyId, KeyDrawing> = {
     { x: 30, y: 46, width: 36, height: 58 },
     { x: 48, y: 80 },
   ),
+  // Baritone low A: a small lever below the octave key, also under the thumb.
+  LOW_A: lever(33, 112, 28, 24),
   FRONT_F: oval(100, 30, 24, 11, -18),
 
   PALM_DSHARP: oval(192, 55, 12, 27, 12),
