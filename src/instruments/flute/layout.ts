@@ -9,8 +9,8 @@ import type { Box, ChartLayout, KeyDrawing } from '@/instruments/types'
  *
  * Laid out upright with the headjoint at the top: the two thumb keys back to
  * the left of the left hand, the G♯ lever out to the right beside it, the two
- * trill keys tucked between the right-hand keys on the left, the E♭ lever to
- * the right of the right hand, and the footjoint keys in a row at the bottom.
+ * trill keys tucked between the right-hand keys on the left, the E♭ lever below
+ * the right hand, over the footjoint keys, and the footjoint keys in a row at the bottom.
  *
  * Geometry is in viewBox units.
  */
@@ -79,36 +79,37 @@ const DRAWINGS: Record<FluteKeyId, KeyDrawing> = {
   TRILL_D: oval(72, 326, 11, 21, -20, 10),
   TRILL_DSHARP: oval(72, 394, 11, 21, -20, 10),
 
-  // The E♭ lever for the right little finger, out to the right of R3.
+  // The E♭ lever for the right little finger, just above the footjoint keys
+  // it shares that finger with.
   R_EFLAT: shape(
-    'M 160 420 L 200 412 Q 210 411 210 421 L 210 444 Q 210 452 201 453 L 162 458 Q 154 459 154 450 L 154 428 Q 154 421 160 420 Z',
-    { x: 154, y: 411, width: 56, height: 48 },
-    { x: 182, y: 435 },
+    'M 48 471 L 108 463 Q 118 462 118 472 L 118 495 Q 118 503 109 504 L 50 509 Q 42 510 42 501 L 42 479 Q 42 472 48 471 Z',
+    { x: 42, y: 462, width: 76, height: 48 },
+    { x: 80, y: 486 },
   ),
 
   // Footjoint, across the bottom: the broad C♯ lever, the C and B rollers,
   // and the little gizmo key.
   FOOT_CSHARP: shape(
-    'M 52 486 L 88 482 Q 98 481 98 491 L 98 540 Q 98 550 88 550 L 52 548 Q 42 547 42 537 L 42 496 Q 42 487 52 486 Z',
-    { x: 42, y: 481, width: 56, height: 69 },
-    { x: 70, y: 516 },
+    'M 52 525 L 88 521 Q 98 520 98 530 L 98 579 Q 98 589 88 589 L 52 587 Q 42 586 42 576 L 42 535 Q 42 526 52 525 Z',
+    { x: 42, y: 520, width: 56, height: 69 },
+    { x: 70, y: 555 },
   ),
   FOOT_C: shape(
-    'M 120 482 Q 130 482 130 494 L 130 538 Q 130 550 120 550 Q 110 550 110 538 L 110 494 Q 110 482 120 482 Z',
-    { x: 110, y: 482, width: 20, height: 68 },
-    { x: 120, y: 516 },
+    'M 120 521 Q 130 521 130 533 L 130 577 Q 130 589 120 589 Q 110 589 110 577 L 110 533 Q 110 521 120 521 Z',
+    { x: 110, y: 521, width: 20, height: 68 },
+    { x: 120, y: 555 },
   ),
   FOOT_B: shape(
-    'M 152 482 Q 162 482 162 494 L 162 538 Q 162 550 152 550 Q 142 550 142 538 L 142 494 Q 142 482 152 482 Z',
-    { x: 142, y: 482, width: 20, height: 68 },
-    { x: 152, y: 516 },
+    'M 152 521 Q 162 521 162 533 L 162 577 Q 162 589 152 589 Q 142 589 142 577 L 142 533 Q 142 521 152 521 Z',
+    { x: 142, y: 521, width: 20, height: 68 },
+    { x: 152, y: 555 },
   ),
-  GIZMO: oval(188, 524, 10, 22, 12, 9),
+  GIZMO: oval(188, 563, 10, 22, 12, 9),
 }
 
 export const FLUTE_CHART: ChartLayout = {
   width: 230,
-  height: 566,
+  height: 605,
   pixelWidth: { sm: 84, md: 120, lg: 196 },
   drawings: DRAWINGS,
   // The break between the left and right hands.
