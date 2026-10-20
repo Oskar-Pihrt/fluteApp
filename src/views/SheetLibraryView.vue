@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { createBlobUrl, revokeBlobUrl } from '@/data/images'
-import { transposeBy } from '@/domain/lookup'
+import { transposeScore } from '@/score/ops'
 import { type MusicXmlPart, parseMusicXml, readMxl } from '@/domain/musicxml'
 import { CATALOG, type InstrumentId } from '@/instruments'
 import { useSettingsStore } from '@/stores/settings'
@@ -132,7 +132,7 @@ async function placeholderImage(title: string, subtitle: string): Promise<Blob> 
 }
 
 /**
- * Import a MusicXML or compressed .mxl file: exact notes, no detection. The
+ * Import a MusicXML or compressed .mxl file: exact notes and rhythm, no detection. The
  * part is rewritten into the selected instrument's written pitch, so a flute
  * part imported on the alto sax comes out ready to finger.
  */
@@ -151,14 +151,10 @@ async function onPickXml(event: Event) {
     if (!part) return
     // Part's written pitch → sounding → this instrument's written pitch.
     const shift = part.transposeSemitones - settings.instrument.transposeSemitones
-    const notes = part.notes.map((note) => transposeBy(note, shift) ?? note)
     const title = score.title || file.name.replace(/\.[^.]+$/, '')
     const image = await placeholderImage(title, `${part.name} · imported from MusicXML`)
-    const id = await store.create(image, title, settings.instrumentId, score.composer)
-    await store.replaceNotes(
-      id,
-      notes.map((note, index) => ({ note, index, source: 'manual' as const })),
-    )
+    // The whole part — rhythm, measures, repeats — not just its pitches.
+    const id = await store.create(image, title, settings.instrumentId, score.composer, transposeScore(part.score, shift))
     await router.push({ name: 'sheet', params: { id } })
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'Could not import that file.'

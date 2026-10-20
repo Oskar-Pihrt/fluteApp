@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { db, newId, type Sheet, type SheetNote } from '@/data/db'
 import { blobToBase64, base64ToBlob, prepareImage } from '@/data/images'
-import { transposeBetween } from '@/domain/lookup'
+import { emptyScore, type Score, toPlain } from '@/score/model'
+import { fromPitchList, transposeScore } from '@/score/ops'
 import { isInstrumentId, loadInstrument } from '@/instruments'
 import type { InstrumentId } from '@/instruments/types'
 
@@ -39,9 +40,24 @@ export const useSheetsStore = defineStore('sheets', () => {
     return db.sheets.get(id)
   }
 
-  async function notesFor(sheetId: string): Promise<SheetNote[]> {
+  /** The pre-score note list, kept only for sheets that have no score row. */
+  async function legacyNotes(sheetId: string): Promise<SheetNote[]> {
     const rows = await db.sheetNotes.where('sheetId').equals(sheetId).toArray()
     return rows.sort((a, b) => a.index - b.index)
+  }
+
+  /** A sheet's notation. Sheets from before scores are converted on the fly. */
+  async function scoreFor(sheetId: string): Promise<Score> {
+    const row = await db.scores.get(sheetId)
+    return row ? row.score : fromPitchList(await legacyNotes(sheetId))
+  }
+
+  async function saveScore(sheetId: string, score: Score) {
+    await db.transaction('rw', db.sheets, db.scores, async () => {
+      await db.scores.put({ sheetId, score: toPlain(score) })
+      await db.sheets.update(sheetId, { updatedAt: Date.now() })
+    })
+    await loadAll()
   }
 
   async function create(
@@ -49,6 +65,7 @@ export const useSheetsStore = defineStore('sheets', () => {
     title: string,
     instrument: InstrumentId,
     composer = '',
+    score: Score = emptyScore(),
   ): Promise<string> {
     const prepared = await prepareImage(file)
     const now = Date.now()
@@ -64,7 +81,10 @@ export const useSheetsStore = defineStore('sheets', () => {
       imageHeight: prepared.height,
       instrument,
     }
-    await db.sheets.add(sheet)
+    await db.transaction('rw', db.sheets, db.scores, async () => {
+      await db.sheets.add(sheet)
+      await db.scores.put({ sheetId: sheet.id, score: toPlain(score) })
+    })
     await loadAll()
     return sheet.id
   }
@@ -75,21 +95,10 @@ export const useSheetsStore = defineStore('sheets', () => {
   }
 
   async function remove(id: string) {
-    await db.transaction('rw', db.sheets, db.sheetNotes, async () => {
+    await db.transaction('rw', db.sheets, db.sheetNotes, db.scores, async () => {
       await db.sheetNotes.where('sheetId').equals(id).delete()
+      await db.scores.delete(id)
       await db.sheets.delete(id)
-    })
-    await loadAll()
-  }
-
-  /** Replace a sheet's whole note sequence. Simpler than diffing, and fast enough. */
-  async function replaceNotes(sheetId: string, notes: Omit<SheetNote, 'id' | 'sheetId'>[]) {
-    await db.transaction('rw', db.sheets, db.sheetNotes, async () => {
-      await db.sheetNotes.where('sheetId').equals(sheetId).delete()
-      await db.sheetNotes.bulkAdd(
-        notes.map((note, index) => ({ ...note, index, id: newId(), sheetId })),
-      )
-      await db.sheets.update(sheetId, { updatedAt: Date.now() })
     })
     await loadAll()
   }
@@ -104,14 +113,9 @@ export const useSheetsStore = defineStore('sheets', () => {
     if (!sheet) return
     const from = await loadInstrument(sheetInstrument(sheet))
     const target = await loadInstrument(to)
-    const notes = await notesFor(sheetId)
-    await db.transaction('rw', db.sheets, db.sheetNotes, async () => {
-      for (const row of notes) {
-        await db.sheetNotes.update(row.id, {
-          note: transposeBetween(row.note, from, target) ?? row.note,
-          chosenFingeringId: undefined,
-        })
-      }
+    const score = transposeScore(await scoreFor(sheetId), from.transposeSemitones - target.transposeSemitones)
+    await db.transaction('rw', db.sheets, db.scores, async () => {
+      await db.scores.put({ sheetId, score: toPlain(score) })
       await db.sheets.update(sheetId, { instrument: to, updatedAt: Date.now() })
     })
     await loadAll()
@@ -124,7 +128,10 @@ export const useSheetsStore = defineStore('sheets', () => {
   interface BackupSheet extends Omit<Sheet, 'image' | 'thumbnail'> {
     image: string
     thumbnail: string
-    notes: Omit<SheetNote, 'id' | 'sheetId'>[]
+    /** Versions 1–3: the note list. */
+    notes?: Omit<SheetNote, 'id' | 'sheetId'>[]
+    /** Version 4: the score. */
+    score?: Score
   }
 
   /**
@@ -135,12 +142,15 @@ export const useSheetsStore = defineStore('sheets', () => {
    * Version 3 carries each sheet's `instrument`. Older files have none, which
    * reads as the flute — the only instrument they could have been made for.
    *
+   * Version 4 carries each sheet's `score` instead of a note list; older
+   * note lists import as pitches-mode scores.
+   *
    * The format id predates the TimbreMap name and stays, so every backup
    * ever exported still imports.
    */
   interface Backup {
     format: 'fluteapp-backup'
-    version: 1 | 2 | 3
+    version: 1 | 2 | 3 | 4
     exportedAt: number
     sheets: BackupSheet[]
   }
@@ -149,29 +159,15 @@ export const useSheetsStore = defineStore('sheets', () => {
     const all = await db.sheets.toArray()
     const payload: Backup = {
       format: 'fluteapp-backup',
-      version: 3,
+      version: 4,
       exportedAt: Date.now(),
       sheets: await Promise.all(
-        all.map(async (sheet) => {
-          const notes = await notesFor(sheet.id)
-          return {
-            ...sheet,
-            image: await blobToBase64(sheet.image),
-            thumbnail: await blobToBase64(sheet.thumbnail),
-            // Fields are listed explicitly rather than spread, to keep database
-            // ids and sheet ids out of the file. That means every new SheetNote
-            // field has to be added here too — omitting one loses it silently on
-            // backup and restore, with nothing to signal the loss.
-            notes: notes.map(({ note, index, chosenFingeringId, bbox, source, barAfter }) => ({
-              note,
-              index,
-              chosenFingeringId,
-              bbox,
-              source,
-              barAfter,
-            })),
-          }
-        }),
+        all.map(async (sheet) => ({
+          ...sheet,
+          image: await blobToBase64(sheet.image),
+          thumbnail: await blobToBase64(sheet.thumbnail),
+          score: toPlain(await scoreFor(sheet.id)),
+        })),
       ),
     }
     return new Blob([JSON.stringify(payload)], { type: 'application/json' })
@@ -185,23 +181,16 @@ export const useSheetsStore = defineStore('sheets', () => {
     }
 
     let added = 0
-    await db.transaction('rw', db.sheets, db.sheetNotes, async () => {
+    await db.transaction('rw', db.sheets, db.scores, async () => {
       for (const backup of parsed.sheets ?? []) {
         if (await db.sheets.get(backup.id)) continue
-        const { image, thumbnail, notes, ...meta } = backup
+        const { image, thumbnail, notes, score, ...meta } = backup
         await db.sheets.add({
           ...meta,
           image: base64ToBlob(image),
           thumbnail: base64ToBlob(thumbnail),
         })
-        await db.sheetNotes.bulkAdd(
-          (notes ?? []).map((note, index) => ({
-            ...note,
-            index,
-            id: newId(),
-            sheetId: backup.id,
-          })),
-        )
+        await db.scores.put({ sheetId: backup.id, score: toPlain(score ?? fromPitchList(notes ?? [])) })
         added++
       }
     })
@@ -215,11 +204,11 @@ export const useSheetsStore = defineStore('sheets', () => {
     loading,
     loadAll,
     get,
-    notesFor,
+    scoreFor,
+    saveScore,
     create,
     updateMeta,
     remove,
-    replaceNotes,
     convertInstrument,
     exportBackup,
     importBackup,

@@ -111,3 +111,59 @@ describe('readMxl', () => {
     expect(parseMusicXml(await readMxl(bytes)).parts[0].notes).toEqual(['E5'])
   })
 })
+
+describe('parseMusicXml — the score', () => {
+  const xml = `<?xml version="1.0"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Flute</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>2</divisions><key><fifths>1</fifths></key><time><beats>3</beats><beat-type>4</beat-type></time></attributes>
+      <direction><sound tempo="96"/></direction>
+      <barline location="left"><repeat direction="forward"/></barline>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>6</duration><type>half</type><dot/></note>
+    </measure>
+    <measure number="2">
+      <barline location="left"><ending number="1" type="start"/></barline>
+      <note><rest/><duration>2</duration><type>quarter</type></note>
+      <note><pitch><step>F</step><alter>1</alter><octave>5</octave></pitch><duration>4</duration><type>half</type><tie type="start"/></note>
+      <barline location="right"><ending number="1" type="stop"/><repeat direction="backward"/></barline>
+    </measure>
+    <measure number="3">
+      <barline location="left"><ending number="2" type="start"/></barline>
+      <note><pitch><step>F</step><alter>1</alter><octave>5</octave></pitch><duration>2</duration><type>quarter</type><tie type="stop"/></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><type>eighth</type></note>
+      <note><chord/><pitch><step>G</step><octave>5</octave></pitch><duration>1</duration><type>eighth</type></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>3</duration></note>
+      <direction><direction-type><words>D.C. al Fine</words></direction-type></direction>
+      <barline location="right"><bar-style>light-heavy</bar-style><ending number="2" type="discontinue"/></barline>
+    </measure>
+  </part>
+</score-partwise>`
+
+  const { score } = parseMusicXml(xml).parts[0]
+
+  it('reads measures, signatures and tempo', () => {
+    expect(score.mode).toBe('rhythm')
+    expect(score.tempo).toBe(96)
+    expect(score.measures).toHaveLength(3)
+    expect(score.measures[0]).toMatchObject({ keyFifths: 1, time: { beats: 3, beatType: 4 }, barStart: 'repeatStart' })
+    expect(score.measures[1].time).toBeUndefined()
+  })
+
+  it('reads durations, dots, rests and ties', () => {
+    const [m1, m2, m3] = score.measures
+    expect(m1.events[0]).toMatchObject({ kind: 'note', pitch: 'G4', duration: { type: 'half', dots: 1 } })
+    expect(m2.events[0]).toMatchObject({ kind: 'rest', duration: { type: 'quarter', dots: 0 } })
+    expect(m2.events[1]).toMatchObject({ pitch: 'F#5', tie: true })
+    expect(m3.events.map((e) => (e.kind === 'note' ? e.pitch : 'r'))).toEqual(['F#5', 'G5', 'D5'])
+    // No <type>: worked out from <duration> in divisions — 3 eighths is a dotted quarter.
+    expect(m3.events[2]).toMatchObject({ duration: { type: 'quarter', dots: 1 } })
+  })
+
+  it('reads repeats, endings and jumps', () => {
+    const [, m2, m3] = score.measures
+    expect(m2).toMatchObject({ volta: { numbers: [1] }, barEnd: 'repeatEnd' })
+    expect(m3).toMatchObject({ volta: { numbers: [2] }, barEnd: 'final', jumps: ['dcAlFine'] })
+  })
+})

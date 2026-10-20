@@ -1,5 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { InstrumentId } from '@/instruments/types'
+import { type Score, toPlain } from '@/score/model'
+import { fromPitchList } from '@/score/ops'
 
 /**
  * Local, offline-first storage. No accounts and no server.
@@ -59,9 +61,20 @@ export interface SheetNote {
   barAfter?: boolean
 }
 
+/**
+ * A sheet's notation (`src/score/model.ts`), one row per sheet. Replaced the
+ * flat `sheetNotes` list in version 2; that table is kept, untouched, as the
+ * pre-score copy of every sheet.
+ */
+export interface StoredScore {
+  sheetId: string
+  score: Score
+}
+
 class FluteDatabase extends Dexie {
   sheets!: EntityTable<Sheet, 'id'>
   sheetNotes!: EntityTable<SheetNote, 'id'>
+  scores!: EntityTable<StoredScore, 'sheetId'>
 
   constructor() {
     // Named before the app became TimbreMap; renaming would orphan every
@@ -71,6 +84,18 @@ class FluteDatabase extends Dexie {
       sheets: 'id, createdAt, updatedAt, title',
       sheetNotes: 'id, sheetId, [sheetId+index]',
     })
+    // Every sheet's note list becomes a pitches-mode score, its dividers
+    // becoming measures.
+    this.version(2)
+      .stores({ scores: 'sheetId' })
+      .upgrade(async (tx) => {
+        const sheets = await tx.table<Sheet>('sheets').toArray()
+        for (const sheet of sheets) {
+          const notes = await tx.table<SheetNote>('sheetNotes').where('sheetId').equals(sheet.id).toArray()
+          notes.sort((a, b) => a.index - b.index)
+          await tx.table<StoredScore>('scores').put({ sheetId: sheet.id, score: toPlain(fromPitchList(notes)) })
+        }
+      })
   }
 }
 
