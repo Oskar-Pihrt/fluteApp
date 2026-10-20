@@ -64,6 +64,10 @@ const DATA_MODULES: Record<DataModuleId, { chunk: string; load: () => Promise<Lo
     chunk: 'brass',
     load: () => import('./brass/data').then((m) => ({ data: m.DOUBLE_HORN_DATA, url: m.MODULE_URL })),
   },
+  ocarina: {
+    chunk: 'ocarina',
+    load: () => import('./ocarina/data').then((m) => ({ data: m.OCARINA_DATA, url: m.MODULE_URL })),
+  },
   trombone: {
     chunk: 'brass',
     load: () => import('./brass/data').then((m) => ({ data: m.TROMBONE_DATA, url: m.MODULE_URL })),

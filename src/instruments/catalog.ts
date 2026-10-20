@@ -15,6 +15,7 @@ export const CATALOG_GROUPS: readonly { id: CatalogGroup; label: string }[] = [
   { id: 'doubleReeds', label: 'Oboes' },
   { id: 'recorders', label: 'Recorders' },
   { id: 'whistles', label: 'Tin whistles' },
+  { id: 'ocarinas', label: 'Ocarina' },
   { id: 'brass', label: 'Brass' },
 ]
 
@@ -581,6 +582,23 @@ export const CATALOG: Record<InstrumentId, InstrumentMeta> = {
   whistleG: whistle({ id: 'whistleG', name: 'G whistle', transposeSemitones: 17 }),
   whistleLowA: whistle({ id: 'whistleLowA', name: 'Low A whistle', transposeSemitones: 7 }),
   whistleLowD: whistle({ id: 'whistleLowD', name: 'Low D whistle', transposeSemitones: 0 }),
+  ocarina: {
+    id: 'ocarina',
+    name: '12-hole alto C ocarina',
+    shortName: 'Ocarina',
+    noun: 'ocarina',
+    family: 'ocarina',
+    group: 'ocarinas',
+    dataModule: 'ocarina',
+    idPrefix: 'ocarina:',
+    // Written at the pitch it sounds.
+    transposeSemitones: 0,
+    registerNames: { 4: 'Low notes', 5: 'Middle register', 6: 'Upper register' },
+    defaultPickerOctave: 5,
+    musicXmlNames: ['ocarina', 'okarina'],
+    options: [],
+    expectedRange: ['A4', 'F6'],
+  },
   trumpetBb: trumpetLike({
     id: 'trumpetBb',
     name: 'B♭ trumpet',

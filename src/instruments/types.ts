@@ -58,21 +58,22 @@ export const INSTRUMENT_IDS = [
   'euphonium',
   'trombone',
   'tenorbassTrombone',
+  'ocarina',
 ] as const
 
 export type InstrumentId = (typeof INSTRUMENT_IDS)[number]
 
 /** Instruments that share tone colour. */
-export type InstrumentFamily = 'flute' | 'sax' | 'clarinet' | 'oboe' | 'recorder' | 'whistle' | 'brass'
+export type InstrumentFamily = 'flute' | 'sax' | 'clarinet' | 'oboe' | 'recorder' | 'whistle' | 'brass' | 'ocarina'
 
 /** Headings the instrument picker groups the catalog under. */
-export type CatalogGroup = 'flutes' | 'saxophones' | 'clarinets' | 'doubleReeds' | 'recorders' | 'whistles' | 'brass'
+export type CatalogGroup = 'flutes' | 'saxophones' | 'clarinets' | 'doubleReeds' | 'recorders' | 'whistles' | 'ocarinas' | 'brass'
 
 /**
  * A lazily loaded bundle of keys, chart and fingerings. Several instruments
  * can share one — every saxophone fingers the same way.
  */
-export type DataModuleId = 'flute' | 'saxophone' | 'clarinetBoehm' | 'clarinetOehler' | 'oboe' | 'recorderBaroque' | 'recorderGerman' | 'whistle' | 'trumpet' | 'euphonium' | 'hornF' | 'hornDouble' | 'trombone'
+export type DataModuleId = 'flute' | 'saxophone' | 'clarinetBoehm' | 'clarinetOehler' | 'oboe' | 'recorderBaroque' | 'recorderGerman' | 'whistle' | 'trumpet' | 'euphonium' | 'hornF' | 'hornDouble' | 'trombone' | 'ocarina'
 
 /** The optional hardware the player has — see `Requirement`. */
 export type InstrumentConfig = readonly Requirement[]

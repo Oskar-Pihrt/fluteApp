@@ -20,6 +20,7 @@ const TIMBRE: Record<InstrumentFamily, 'reedy' | 'pure'> = {
   recorder: 'pure',
   whistle: 'pure',
   brass: 'reedy',
+  ocarina: 'pure',
 }
 
 let ctx: AudioContext | null = null

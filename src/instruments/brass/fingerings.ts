@@ -78,7 +78,13 @@ interface Side {
  * a note can't be reached, so a gap in a range is a test failure, not a hole
  * in the library.
  */
-export function generate(sides: readonly Side[], low: string, high: string): FingeringSpec[] {
+export function generate(
+  sides: readonly Side[],
+  low: string,
+  high: string,
+  /** Primaries taken from a published chart instead of the rule, by note. */
+  chart: Readonly<Record<string, string>> = {},
+): FingeringSpec[] {
   const specs: FingeringSpec[] = []
   for (let note = midi(low); note <= midi(high); note++) {
     const ways: Way[] = []
@@ -97,6 +103,12 @@ export function generate(sides: readonly Side[], low: string, high: string): Fin
     }
     if (!ways.length) throw new Error(`No brass fingering reaches ${Note.fromMidiSharps(note)}`)
     ways.sort((a, b) => Number(a.rank >= 1000) - Number(b.rank >= 1000) || a.lowering - b.lowering || a.rank - b.rank)
+    const charted = chart[Note.fromMidiSharps(note)]
+    if (charted) {
+      const index = ways.findIndex((way) => way.code === charted)
+      if (index === -1) throw new Error(`Charted ${charted} doesn't reach ${Note.fromMidiSharps(note)}`)
+      ways.unshift(...ways.splice(index, 1))
+    }
     const seen = new Set<string>()
     for (const way of ways) {
       if (seen.has(way.code)) continue
@@ -125,13 +137,30 @@ export const EUPHONIUM_SPECS = generate([{ series: TRUMPET_SERIES, combos: FOUR_
 
 export const HORN_F_SPECS = generate([{ series: HORN_F_SERIES, combos: THREE_VALVES }], 'C#3', 'C6')
 
+/**
+ * Where a double horn player uses which side is convention, not physics, so
+ * the primaries follow a published chart: Mouthpiece Express's F-B♭ double
+ * horn basic fingering chart — the B♭ side (thumb valve) for low C♯ to F and
+ * from G♯ in the staff upward, the F side between. The rest of both sides are
+ * alternates.
+ */
+const DOUBLE_HORN_CHART: Readonly<Record<string, string>> = {
+  'C#3': 'T 23', D3: 'T 3', 'D#3': 'T 1', E3: 'T 2', F3: 'T 0',
+  'F#3': '2', G3: '0', 'G#3': '23', A3: '12', 'A#3': '1', B3: '2',
+  C4: '0', 'C#4': '12', D4: '1', 'D#4': '2', E4: '0', F4: '1', 'F#4': '2', G4: '0',
+  'G#4': 'T 23', A4: 'T 12', 'A#4': 'T 1', B4: 'T 2', C5: 'T 0',
+  'C#5': 'T 123', D5: 'T 12', 'D#5': 'T 1', E5: 'T 2', F5: 'T 0',
+  'F#5': 'T 2', G5: 'T 0', 'G#5': 'T 23', A5: 'T 12', 'A#5': 'T 1', B5: 'T 2', C6: 'T 0',
+}
+
 export const DOUBLE_HORN_SPECS = generate(
   [
-    { series: HORN_F_SERIES, combos: THREE_VALVES },
+    { series: HORN_F_SERIES, combos: THREE_VALVES, comment: 'F side.' },
     { series: HORN_BB_SERIES, combos: THREE_VALVES, prefix: 'T ', secondary: true, comment: 'B♭ side.' },
   ],
   'C#3',
   'C6',
+  DOUBLE_HORN_CHART,
 )
 
 export const TROMBONE_SPECS = generate(
