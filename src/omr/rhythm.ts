@@ -287,6 +287,8 @@ export function assembleRhythm(input: RhythmInput): Rhythm {
     measure.volta = { numbers: [second ? 2 : 1] }
   })
 
+  inferTimes(measures)
+
   // ── Check every measure against its time signature ──────────────────────
   let time: TimeSignature = { beats: 4, beatType: 4 }
   measures.forEach((measure, i) => {
@@ -312,6 +314,38 @@ export function assembleRhythm(input: RhythmInput): Rhythm {
   })
 
   return { measures }
+}
+
+/**
+ * Correct a misread time signature from the music under it. A time
+ * signature is one small glyph read once; the measures after it are dozens of
+ * independent readings. When most measures of a stretch agree on a length the
+ * signature doesn't give, the signature is what is wrong — it becomes the one
+ * with that length, keeping its denominator when it can (3/4 and 6/8 are the
+ * same length).
+ */
+function inferTimes(measures: RhythmMeasure[]) {
+  const starts = measures.map((m, i) => (i === 0 || m.time ? i : -1)).filter((i) => i >= 0)
+  starts.forEach((start, k) => {
+    const end = starts[k + 1] ?? measures.length
+    const read = measures[start].time ?? { beats: 4, beatType: 4 }
+    const counts = new Map<number, number>()
+    let considered = 0
+    for (let i = start; i < end; i++) {
+      const events = measures[i].events
+      // The first and last measures may be partial, a lone rest fills any length.
+      if (i === 0 || i === measures.length - 1 || (events.length === 1 && events[0].kind === 'rest')) continue
+      const total = events.reduce((sum, e) => sum + durationTicks(e.duration), 0)
+      counts.set(total, (counts.get(total) ?? 0) + 1)
+      considered++
+    }
+    if (considered < 3) return
+    const [ticks, votes] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]
+    if (ticks === measureTicks(read) || votes < considered * 0.5) return
+    const candidates = Object.values(TIME_CLASSES).filter((t) => !t.symbol && measureTicks(t) === ticks)
+    const better = candidates.find((t) => t.beatType === read.beatType) ?? candidates[0]
+    if (better) measures[start].time = better
+  })
 }
 
 /** The single plain or dotted duration lasting exactly `ticks`, if there is one. */

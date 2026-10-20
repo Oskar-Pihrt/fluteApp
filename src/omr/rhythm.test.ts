@@ -86,3 +86,16 @@ describe('assembleRhythm', () => {
     expect(measures[1].events[0].duration).toEqual({ type: 'half', dots: 1 })
   })
 })
+
+describe('time signature inference', () => {
+  it('corrects a misread signature from the measures under it', () => {
+    const q = (x: number) => note(x, 'C5', 'quarter')
+    const { measures } = run(
+      [q(60), q(80), q(120), q(140), q(220), q(240), q(320), q(340), q(420), q(440)],
+      [det('ts_4_4', 50)],
+      [100, 200, 300, 400],
+    )
+    expect(measures[0].time).toEqual({ beats: 2, beatType: 4 })
+    expect(measures.every((m) => m.fill === 'ok')).toBe(true)
+  })
+})
