@@ -227,16 +227,42 @@ function majorityKey(keys: KeySignature[]): KeySignature {
  * the system does and picks up again at the left of the next one. Either way
  * it only carries on if the next staff shows some end mark of its own, since
  * a continuing line always has to end somewhere and a continuation with no end
- * in sight is far likelier a misread than a piece spent an octave up.
+ * in sight is far likelier a misread than a piece spent an octave up. The same
+ * goes for a start: one never closed on its staff counts only if the next
+ * staff opens with an end — otherwise it is most likely a fingering digit or
+ * other small text read as an "8", and would put a whole line an octave out.
  * Lines below the staff are 8vb.
  */
+/**
+ * The staff an ottava mark belongs to. Not simply the nearest: an 8va sits
+ * above the notes it raises, and over a high passage — ledger lines and all —
+ * that can be nearer the staff above than its own. So a mark in the gap
+ * between two staves is the lower one's 8va, unless it hugs the upper staff's
+ * bottom line, where an 8vb would be.
+ */
+function ottavaStaff(staves: Staff[], y: number): Staff | null {
+  const below = staves.findIndex((staff) => staff.lines[0] > y)
+  const above = below === -1 ? staves[staves.length - 1] : below > 0 ? staves[below - 1] : null
+  if (above && y <= above.lines[4]) return above
+  if (below !== -1) {
+    const staff = staves[below]
+    const hugsAbove = above && y - above.lines[4] < above.spaceHeight * 1.5
+    if (!hugsAbove && staff.lines[0] - y < staff.spaceHeight * 9) return staff
+  }
+  if (above && y - above.lines[4] < above.spaceHeight * 8) return above
+  return null
+}
+
 function applyOttavas<T extends Notehead>(heads: T[], detections: Detection[], staves: Staff[], S: number): (T & { octaveShift?: number })[] {
   const spans: { staffIndex: number; x0: number; x1: number; shift: number }[] = []
+  const marksOf = staves.map((staff) =>
+    detections
+      .filter((d) => (d.cls === 'ottava_start' || d.cls === 'ottava_end') && ottavaStaff(staves, d.y)?.index === staff.index)
+      .sort((a, b) => a.x - b.x),
+  )
   let carry: number | null = null
-  for (const staff of staves) {
-    const marks = detections
-      .filter((d) => (d.cls === 'ottava_start' || d.cls === 'ottava_end') && staffForY(staves, d.y)?.index === staff.index)
-      .sort((a, b) => a.x - b.x)
+  for (const [i, staff] of staves.entries()) {
+    const marks = marksOf[i]
     const hasEnd = marks.some((m) => m.cls === 'ottava_end')
     let shift: number = carry != null && hasEnd ? carry : 0
     let x0: number | null = shift ? staff.x0 : null
@@ -254,7 +280,8 @@ function applyOttavas<T extends Notehead>(heads: T[], detections: Detection[], s
         x0 = null
       }
     }
-    if (x0 != null) {
+    // Still open at the end of the staff: real only if the next staff ends it.
+    if (x0 != null && marksOf[i + 1]?.[0]?.cls === 'ottava_end') {
       spans.push({ staffIndex: staff.index, x0, x1: staff.x1 + 1, shift })
       carry = shift
     }

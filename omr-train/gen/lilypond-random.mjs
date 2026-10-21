@@ -140,6 +140,8 @@ function piece(seed) {
       filled += dur
     }
     tokens.push('|')
+    // A tempo change now and then: its metronome note is not one to read.
+    if (bar % 8 === 3 && r.chance(0.12)) tokens.push(`\\tempo ${r.pick(['4', '2', '8', '4.'])} = ${r.int(40, 200)}`)
     if (bar % 8 === 7 && r.chance(0.2)) tokens.push(r.pick(['\\bar "||"', '\\bar ":|."', '\\bar ".|:"']))
   }
   if (ottava > 0) tokens.push('\\ottava #0')
@@ -153,7 +155,7 @@ function piece(seed) {
 \\score {
   \\new Staff \\with { ${r.chance(0.3) ? 'instrumentName = "Fl."' : ''} } {
     \\clef treble \\key ${MAJOR_KEYS[fifths]} \\major \\time ${meter[0]}/${meter[1]}
-    ${r.chance(0.6) ? (r.chance(0.5) ? `\\tempo ${r.pick(['4', '8', '2', '4.'])} = ${r.int(60, 190)}` : `\\tempo "${r.pick(['Allegro', 'Andante', 'Moderato', 'Adagio', 'Presto'])}"`) : ''}
+    ${r.chance(0.75) ? (r.chance(0.7) ? `\\tempo ${r.chance(0.4) ? `"${r.pick(['Allegro', 'Andante', 'Moderato', 'Adagio', 'Presto'])}" ` : ''}${r.pick(['4', '4', '8', '2', '4.'])} = ${r.int(40, 200)}` : `\\tempo "${r.pick(['Allegro', 'Andante', 'Moderato', 'Adagio', 'Presto'])}"`) : ''}
     ${music}
     \\bar "|."
   }

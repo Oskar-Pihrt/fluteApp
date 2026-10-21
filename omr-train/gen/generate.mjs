@@ -39,6 +39,42 @@ const TIME_SYMBOLS = { E08A: 'common', E08B: 'cut' }
 /** MEI @dur → duration name. */
 const DURATIONS = { 1: 'whole', 2: 'half', 4: 'quarter', 8: 'eighth', 16: '16th', 32: '32nd' }
 
+/**
+ * Verovio sets a metronome mark's note as a glyph of the music font in text,
+ * which rsvg can't draw without the font installed. Draw it as the engraver
+ * would instead: the page's own notehead symbol and a stem, in the room the
+ * glyph took. Nothing here is a notehead in the truth, so the detector learns
+ * that a note in a tempo mark is not one to read.
+ */
+function drawMetronomeMarks(svg, r) {
+  const staffLines = [...(svg.match(/class="staff"[\s\S]*?<\/g>/)?.[0] ?? '').matchAll(/d="M\d+ (\d+) L\d+ \d+"/g)].map((m) => +m[1])
+  if (staffLines.length < 5) return svg
+  const space = (staffLines[4] - staffLines[0]) / 4
+  const black = svg.match(/xlink:href="#(E0A4-[^"]+)"/)?.[1]
+  const hollow = svg.match(/xlink:href="#(E0A3-[^"]+)"/)?.[1] ?? black
+  if (!black) return svg
+  return svg.replace(/(<g[^>]*class="tempo"[^>]*>\s*<text x="([\d.]+)" y="([\d.]+)"[^>]*>)([\s\S]*?)(<\/text>)/g, (all, open, x, y, body, close) => {
+    const glyph = body.match(/<tspan[^>]*class="rend"[^>]*>\s*<tspan[^>]*class="text"[^>]*>\s*<tspan font-family="[^"]*" font-size="([\d.]+)px">(.)<\/tspan>\s*<\/tspan>\s*<\/tspan>/)
+    if (!glyph) return all
+    const textSize = Number(body.match(/<tspan font-size="([\d.]+)px">/)?.[1] ?? space * 2.2)
+    // Where the glyph starts: after the text before it, at about half an em a character.
+    const before = [...body.slice(0, glyph.index).matchAll(/<tspan font-size="[\d.]+px">([^<]*)<\/tspan>/g)].map((m) => m[1]).join('')
+    const startX = Number(x) + before.length * textSize * 0.58
+    const scale = 0.72 * (0.7 + r.next() * 0.45)
+    const headWidth = 1.18 * space * (scale / 0.72)
+    const cx = startX + space * 0.2
+    const cy = Number(y) - space * 0.3
+    const code = glyph[2].codePointAt(0).toString(16).toUpperCase()
+    const href = code === 'E1D3' ? hollow : black
+    const stemX = cx + headWidth - space * 0.06
+    const flag = code === 'E1D7' ? `<path d="M${stemX} ${cy - space * 3} Q${stemX + space * 0.9} ${cy - space * 2.2} ${stemX + space * 0.7} ${cy - space * 1.2}" fill="none" stroke-width="${space * 0.18}" />` : ''
+    const note = `<g class="metronome"><use xlink:href="#${href}" transform="translate(${cx}, ${cy}) scale(${scale}, ${scale})" /><path d="M${stemX} ${cy - space * 0.15} L${stemX} ${cy - space * 3}" stroke-width="${space * 0.12}" />${flag}</g>`
+    // Keep the room the glyph took, so "= 112" still sits after the note.
+    const gap = `<tspan font-size="${textSize}px">${'\u00a0'.repeat(4)}</tspan>`
+    return open + body.replace(glyph[0], gap) + close + note
+  })
+}
+
 const toolkit = new VerovioToolkit(await createVerovioModule())
 // Verovio is chatty about recoverable encoding quirks; they are not errors here.
 console.warn = () => {}
@@ -79,7 +115,7 @@ for (let seed = from; seed < from + count; seed++) {
 
   const pages = Math.min(toolkit.getPageCount(), 2)
   for (let page = 1; page <= pages; page++) {
-    const svg = toolkit.renderToSVG(page)
+    const svg = drawMetronomeMarks(toolkit.renderToSVG(page), r)
     const { viewBox, elements } = extractBoxes(svg)
     const byRef = new Map(elements.map((e) => [e.ref, e]))
     const parentOf = (e) => (e.parent ? byRef.get(e.parent) : null)

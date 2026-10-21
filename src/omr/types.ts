@@ -161,6 +161,8 @@ export interface OmrResult {
     staffLineCount: number
     /** Noteheads located, before chords were reduced and pitches derived. */
     noteheadCount: number
+    /** Ottava marks found, in normalised image coordinates — for the eval's diagnosis. */
+    ottavas?: { cls: string; x: number; y: number }[]
   }
 }
 

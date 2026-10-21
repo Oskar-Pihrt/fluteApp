@@ -56,6 +56,14 @@ function keyAlterations(fifths) {
 const xmlEscape = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 
 const TEMPI = ['Allegro', 'Andante', 'Moderato', 'Adagio', 'Presto', 'Allegretto', 'Lento', 'Vivace', 'Andantino', 'Allegro moderato']
+/** A tempo indication's text; the metronome note is a SMuFL glyph placeholder. */
+function tempoText(r) {
+  const unit = r.pick(['E1D5', 'E1D5', 'E1D5', 'E1D3', 'E1D7'])
+  const mark = `<rend glyph.auth="smufl">&#x${unit};</rend>${r.chance(0.15) ? '.' : ''} = ${r.int(40, 200)}`
+  const word = r.pick(TEMPI)
+  const roll = r.next()
+  return roll < 0.3 ? word : roll < 0.65 ? `${word} ${mark}` : mark
+}
 const DIRECTIONS = ['dolce', 'cresc.', 'dim.', 'espress.', 'rit.', 'a tempo', 'legato', 'sempre p', 'poco rit.', 'leggiero', 'molto', 'sim.']
 const DYNAMICS = ['pp', 'p', 'mp', 'mf', 'f', 'ff', 'sfz', 'fp']
 const TITLES = ['Etude', 'Sonata', 'Partita', 'Study No.', 'Air', 'Romance', 'Sicilienne', 'Minuet', 'Caprice', 'Fantasy', 'Waltz', 'Scherzo', 'Exercise']
@@ -355,7 +363,10 @@ export function generatePiece(seed) {
       pendingEnding = 2
     }
     const attrs = `${left ? ` left="${left}"` : ''}${right ? ` right="${right}"` : ''}`
-    const tempo = m === 1 && r.chance(0.7) ? `<tempo staff="1" tstamp="1" place="above">${r.pick(TEMPI)}</tempo>` : ''
+    // Tempo: a word, a metronome mark (♩ = 112, drawn by generate.mjs), or
+    // both — at the start and now and then mid-piece, as MuseScore parts
+    // have them. The mark's note is not a note to read: a hard negative.
+    const tempo = (m === 1 && r.chance(0.75)) || (m > 1 && r.chance(0.05)) ? `<tempo staff="1" tstamp="1" place="above">${tempoText(r)}</tempo>` : ''
     measureTruth[`m${m}`] = { left, right, ending }
     measureXml.push({ n: m, ending, xml: `<measure xml:id="m${m}" n="${m}"${attrs}><staff n="1"><layer n="1">${layer}</layer></staff>${tempo}`, controls: [] })
 

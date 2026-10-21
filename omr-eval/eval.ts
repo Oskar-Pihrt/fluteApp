@@ -77,6 +77,11 @@ interface PageScore {
   rhythmLength: number
   measures: number
   measuresFitting: number
+  /** The rhythm path — what the app shows after "read notes and rhythm". */
+  rNotes: number
+  rMatched: number
+  rPitchCorrect: number
+  rOctaveErrors: number
 }
 
 /** Which bucket a page reports under: source and resolution. */
@@ -152,7 +157,11 @@ for (const page of pages) {
   let dotsCorrect = 0
   let rhythmEdits = 0
   let rhythmLength = 0
+  let rMatched = 0
+  let rPitchCorrect = 0
+  let rOctaveErrors = 0
   const measures = result.rhythm?.measures ?? []
+  const rNotes = measures.flatMap((m) => m.events).filter((e) => e.kind === 'note').length
   if (result.rhythm) {
     const taken = new Set<number>()
     for (const event of measures.flatMap((m) => m.events)) {
@@ -172,6 +181,10 @@ for (const page of pages) {
       if (best < 0) continue
       taken.add(best)
       const head = truthSeq[best]
+      rMatched++
+      const gotMidi = midiOf(event.pitch ?? '')
+      if (gotMidi === head.midi) rPitchCorrect++
+      else if (Math.abs(gotMidi - head.midi) % 12 === 0) rOctaveErrors++
       const want = truthDuration(head)
       if (want && !head.grace) {
         durMatched++
@@ -215,6 +228,10 @@ for (const page of pages) {
     rhythmLength,
     measures: measures.length,
     measuresFitting: measures.filter((m) => m.fill !== 'off').length,
+    rNotes,
+    rMatched,
+    rPitchCorrect,
+    rOctaveErrors,
   }
   scores.push(score)
   if (!quiet) {
@@ -238,6 +255,11 @@ interface Summary {
   dotsAccuracy: number | null
   rhythmAccuracy: number | null
   measuresFitting: number | null
+  /** Rhythm path: pitch (octave included) of the notes found, how many found notes are real, octave slips. */
+  rhythmPitch: number | null
+  rhythmPrecision: number | null
+  rhythmRecall: number | null
+  octaveErrors: number
 }
 
 function summarise(list: PageScore[]): Summary {
@@ -256,6 +278,10 @@ function summarise(list: PageScore[]): Summary {
     dotsAccuracy: sum((s) => s.dotsMatched) ? sum((s) => s.dotsCorrect) / sum((s) => s.dotsMatched) : null,
     rhythmAccuracy: sum((s) => s.rhythmLength) ? Math.max(0, 1 - sum((s) => s.rhythmEdits) / sum((s) => s.rhythmLength)) : null,
     measuresFitting: sum((s) => s.measures) ? sum((s) => s.measuresFitting) / sum((s) => s.measures) : null,
+    rhythmPitch: sum((s) => s.rMatched) ? sum((s) => s.rPitchCorrect) / sum((s) => s.rMatched) : null,
+    rhythmPrecision: sum((s) => s.rNotes) ? sum((s) => s.rMatched) / sum((s) => s.rNotes) : null,
+    rhythmRecall: sum((s) => s.rNotes) ? sum((s) => s.rMatched) / Math.max(1, truth) : null,
+    octaveErrors: sum((s) => s.rOctaveErrors),
   }
 }
 
@@ -265,7 +291,7 @@ for (const group of groups) summary[group] = summarise(scores.filter((s) => s.gr
 
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`.padStart(7)
 const opt = (v: number | null) => (v === null ? '      –' : pct(v))
-console.log('\n' + 'group'.padEnd(34) + 'pages   seq.acc  played   recall  precis.  pitch   ≥95%    ms   dur.   dots  rhythm  bars')
+console.log('\n' + 'group'.padEnd(34) + 'pages   seq.acc  played   recall  precis.  pitch   ≥95%    ms   dur.   dots  rhythm  bars  r.pitch r.prec r.recall 8va')
 for (const [name, s] of Object.entries(summary)) {
   console.log(
     name.padEnd(34) +
@@ -280,7 +306,11 @@ for (const [name, s] of Object.entries(summary)) {
       opt(s.durationAccuracy) +
       opt(s.dotsAccuracy) +
       opt(s.rhythmAccuracy) +
-      opt(s.measuresFitting),
+      opt(s.measuresFitting) +
+      opt(s.rhythmPitch) +
+      opt(s.rhythmPrecision) +
+      opt(s.rhythmRecall) +
+      String(s.octaveErrors).padStart(5),
   )
 }
 

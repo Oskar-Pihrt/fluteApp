@@ -2,6 +2,7 @@ import { assemble, type AssembleOptions } from './assemble'
 import { binarise, LOW_CONTRAST_INK_FRACTION } from './binarise'
 import { rotate } from './bitmap'
 import { buildDewarp, findTracks } from './dewarp'
+import { dropUnledgeredHeads } from './ledgers'
 import { estimateSkew } from './deskew'
 import { detectSymbols, resampleGray } from './detector'
 import type { Net } from './net'
@@ -161,7 +162,12 @@ export function recogniseWithNet(gray: Bitmap, net: Net, options: NetRecogniseOp
   // ── Symbols ──────────────────────────────────────────────────────────────
   report('symbols', 0)
   mark = clock()
-  const detections = detectSymbols(net, page, { staves, onTile: (done, total) => report('symbols', done / total) })
+  // Noteheads off the staff with no ledger lines (a metronome mark's note) are not notes.
+  const detections = dropUnledgeredHeads(
+    detectSymbols(net, page, { staves, onTile: (done, total) => report('symbols', done / total) }),
+    staves,
+    pageBinary,
+  )
   timings.symbols = clock() - mark
 
   // ── Pitch ────────────────────────────────────────────────────────────────
@@ -179,6 +185,12 @@ export function recogniseWithNet(gray: Bitmap, net: Net, options: NetRecogniseOp
     return normaliseBox(bbox, page, skewDeg, 1 / factor, gray)
   }
   const notes = assembled.notes.map((note) => ({ ...note, bbox: toImage(note.bbox) }))
+  diagnostics.ottavas = detections
+    .filter((d) => d.cls === 'ottava_start' || d.cls === 'ottava_end')
+    .map((d) => {
+      const box = toImage({ x: d.x, y: d.y, width: 0, height: 0 })
+      return { cls: d.cls, x: box.x, y: box.y }
+    })
   const rhythm = assembled.rhythm && {
     measures: assembled.rhythm.measures.map((measure) => ({
       ...measure,
