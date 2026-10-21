@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import BottomSheet from '@/components/BottomSheet.vue'
 import StaffPosition from '@/components/StaffPosition.vue'
 import {
   answerMidis,
@@ -10,6 +11,8 @@ import {
   itemsAt,
   levelsFor,
   MODES,
+  UNLOCK_CORRECT,
+  UNLOCK_WINDOW,
   type Mode,
   type Question,
 } from '@/domain/earTraining'
@@ -23,6 +26,10 @@ import { useSettingsStore } from '@/stores/settings'
  * Ear trainer: hear a piano note or interval, say what it was. Independent of
  * the selected instrument — everything here is concert pitch — except for the
  * fingering links shown after an answer.
+ *
+ * One question fills the screen: a big play square in the middle, the answers
+ * under the thumb. Exercise, level and statistics live in a panel behind the
+ * button at the top.
  */
 
 const trainer = useEarTrainerStore()
@@ -161,189 +168,243 @@ function accuracy(item: number): string {
 }
 
 const recentCorrect = computed(() => progress.value.recent.filter(Boolean).length)
+
+/** The last answers at this level as a strip of bars, padded to the unlock window. */
+const recentBars = computed(() => {
+  const recent = progress.value.recent.slice(-UNLOCK_WINDOW)
+  return [...recent, ...Array<null>(UNLOCK_WINDOW - recent.length).fill(null)]
+})
+const canUnlock = computed(() => progress.value.level === progress.value.unlocked && progress.value.unlocked < levelCount.value)
+
+const panelOpen = ref(false)
+
+/** Share of right answers per item, for the bars in the panel. */
+function share(item: number): number | null {
+  const stats = progress.value.stats[item]
+  return stats && stats.attempts ? stats.correct / stats.attempts : null
+}
+
+function answerClass(item: number): string {
+  if (answered.value && question.value?.answer === item) return 'border-accent-400 bg-accent-400 text-ink-950'
+  if (answered.value && chosen.value === item) return 'border-[#f0b44c] text-[#f0b44c]'
+  if (!items.value.includes(item)) return 'border-ink-800 text-ink-400 opacity-35'
+  return answered.value ? 'border-ink-800 bg-ink-900 text-ink-400' : 'border-ink-700 bg-ink-900 text-ink-50 enabled:active:bg-ink-800'
+}
 </script>
 
 <template>
-  <div class="space-y-6">
-    <header>
-      <h1 class="text-xl">Ear trainer</h1>
-      <p class="mt-1 text-sm text-ink-400">{{ MODE_LABELS[mode].hint }}</p>
+  <div class="flex min-h-[calc(100svh-12rem)] flex-col gap-4 md:min-h-0">
+    <header class="flex items-center justify-between gap-3">
+      <button
+        type="button"
+        class="flex h-11 items-center gap-2 border border-ink-700 px-3 text-sm font-semibold text-ink-50 transition-colors hover:border-ink-400"
+        aria-haspopup="dialog"
+        @click="panelOpen = true"
+      >
+        {{ MODE_LABELS[mode].title }} · Level {{ progress.level }}
+        <svg viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      <p class="text-sm text-ink-400">
+        <span class="font-semibold text-ink-50">{{ trainer.sessionCorrect }}/{{ trainer.sessionAttempts }}</span>
+        · streak {{ trainer.streak }}
+      </p>
     </header>
 
-    <div class="grid grid-cols-3 gap-1 rounded-xl border border-ink-700 p-1" role="tablist" aria-label="Exercise">
-      <button
-        v-for="m in MODES"
-        :key="m"
-        type="button"
-        role="tab"
-        :aria-selected="mode === m"
-        class="rounded-lg px-2 py-2 text-sm font-medium transition-colors"
-        :class="mode === m ? 'bg-ink-700 text-accent-400' : 'text-ink-400 hover:text-ink-200'"
-        @click="setMode(m)"
+    <div v-if="canUnlock" class="space-y-1.5">
+      <div
+        class="flex gap-[3px]"
+        role="img"
+        :aria-label="`${recentCorrect} of the last ${progress.recent.length} right`"
       >
-        {{ MODE_LABELS[m].title }}
-      </button>
-    </div>
-
-    <section class="space-y-2">
-      <h2 class="text-xs font-semibold uppercase tracking-wider text-ink-400">Level</h2>
-      <div class="flex flex-wrap gap-2">
-        <button
-          v-for="level in levelCount"
-          :key="level"
-          type="button"
-          class="h-9 min-w-9 rounded-lg border px-3 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-          :class="
-            progress.level === level
-              ? 'border-accent-400 bg-ink-800 text-accent-400'
-              : 'border-ink-700 text-ink-200 hover:border-ink-400'
-          "
-          :disabled="level > progress.unlocked"
-          :aria-label="level > progress.unlocked ? `Level ${level}, locked` : `Level ${level}`"
-          :aria-pressed="progress.level === level"
-          @click="setLevel(level)"
-        >
-          {{ level }}
-        </button>
+        <span
+          v-for="(bar, i) in recentBars"
+          :key="i"
+          class="h-1.5 flex-1"
+          :class="bar === null ? 'bg-ink-800' : bar ? 'bg-accent-400' : 'bg-ink-600'"
+        />
       </div>
       <p class="text-xs text-ink-400">
-        {{ items.map(itemLabel).join(' · ') }}
+        Level {{ progress.level + 1 }} after {{ UNLOCK_CORRECT }} of the last {{ UNLOCK_WINDOW }} right
       </p>
-      <p v-if="progress.level === progress.unlocked && progress.unlocked < levelCount" class="text-xs text-ink-400">
-        Next level after 16 of the last 20 right ({{ recentCorrect }}/{{ progress.recent.length }} so far).
-      </p>
-    </section>
+    </div>
 
-    <p v-if="loadError" class="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+    <p v-if="loadError" class="border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
       {{ loadError }}
     </p>
 
-    <section class="space-y-3">
-      <div class="flex gap-2">
+    <!-- The question, or what it was. -->
+    <section class="flex flex-1 flex-col items-center justify-center gap-3 py-2">
+      <template v-if="!question || !answered">
         <button
           type="button"
-          class="flex-1 rounded-xl bg-accent-500 px-4 py-3.5 text-base font-semibold text-ink-950 transition-colors hover:bg-accent-400 disabled:opacity-50"
-          :disabled="!loaded || (question != null && !answered)"
-          @click="next"
+          class="flex h-36 w-36 items-center justify-center bg-accent-400 text-ink-950 transition-colors hover:bg-accent-300 active:bg-accent-500 disabled:opacity-50"
+          :disabled="!loaded"
+          :aria-label="question ? 'Play it again' : 'Start'"
+          @click="question ? replay() : next()"
         >
-          {{ !loaded && !loadError ? 'Loading piano…' : question ? 'Next' : 'Play' }}
+          <svg v-if="question" viewBox="0 0 24 24" class="h-14 w-14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12" />
+          </svg>
+          <svg v-else viewBox="0 0 24 24" class="h-14 w-14" fill="currentColor" aria-hidden="true">
+            <path d="M7 4l13 8-13 8z" />
+          </svg>
         </button>
-        <button
-          type="button"
-          class="rounded-xl border border-ink-600 px-5 py-3.5 text-sm font-medium text-ink-200 transition-colors hover:border-accent-400 disabled:opacity-40"
-          :disabled="!question"
-          @click="replay"
-        >
-          Replay
-        </button>
-      </div>
+        <p class="text-sm text-ink-200">
+          <template v-if="!loaded && !loadError">Loading piano…</template>
+          <template v-else-if="!question">{{ MODE_LABELS[mode].hint }}</template>
+          <template v-else-if="question.mode === 'reference' && question.root != null">
+            Reference <span class="font-semibold text-ink-50">{{ midiLabel(question.root) }}</span>, then the note to name
+          </template>
+          <template v-else-if="question.mode === 'interval'">How far apart?</template>
+          <template v-else>Which note was that?</template>
+        </p>
+        <p v-if="question" class="text-xs text-ink-400">Tap the square to hear it again</p>
+      </template>
 
-      <p v-if="question?.mode === 'reference' && question.root != null" class="text-sm text-ink-200">
-        Reference:
-        <span class="font-semibold text-ink-50">{{ midiLabel(question.root) }}</span>
-        <span class="text-ink-400"> — then the note to name.</span>
-      </p>
-    </section>
-
-    <section class="space-y-2" aria-label="Answers">
-      <div class="grid gap-2" :class="mode === 'interval' ? 'grid-cols-3 sm:grid-cols-4' : 'grid-cols-4'">
-        <button
-          v-for="item in gridItems"
-          :key="item"
-          type="button"
-          class="rounded-xl border px-2 py-3 text-center transition-colors disabled:cursor-not-allowed"
-          :class="[
-            answered && question?.answer === item
-              ? 'border-emerald-400 bg-emerald-400/15 text-ink-50'
-              : answered && chosen === item
-                ? 'border-red-400 bg-red-400/15 text-ink-50'
-                : 'border-ink-700 text-ink-200 enabled:hover:border-ink-400',
-            !items.includes(item) ? 'opacity-30' : '',
-          ]"
-          :disabled="!question || answered || !items.includes(item)"
-          @click="answer(item)"
-        >
-          <span class="block text-sm font-semibold">{{ itemLabel(item) }}</span>
-          <span v-if="mode === 'interval'" class="mt-0.5 block text-[11px] leading-tight text-ink-400">
-            {{ INTERVAL_NAMES[item].long }}
-          </span>
-        </button>
-      </div>
-    </section>
-
-    <section v-if="question && answered" class="space-y-4 rounded-xl border border-ink-700 bg-ink-900 p-4">
-      <p class="text-sm font-semibold" :class="correct ? 'text-emerald-300' : 'text-red-300'">
-        {{ correct ? 'Correct' : 'Not quite' }}
-        <span class="font-normal text-ink-200"> — it was {{ answerText }}.</span>
-      </p>
-
-      <div class="flex flex-wrap gap-6">
-        <figure v-for="(midi, i) in question.midis" :key="i" class="flex flex-col items-center gap-1.5">
-          <StaffPosition :note="canonicalNote(midi)" :clef="clefFor(midi)" />
-          <figcaption class="text-xs text-ink-200">
-            {{ midiLabel(midi) }}
-            <span v-if="question.midis.length > 1" class="text-ink-400">
-              {{ question.mode === 'reference' ? (i === 0 ? '(reference)' : '(target)') : `(${i + 1})` }}
-            </span>
-          </figcaption>
-        </figure>
-      </div>
-
-      <p v-if="unlockMessage" class="rounded-lg bg-accent-400/15 px-3 py-2 text-sm text-accent-300">
-        {{ unlockMessage }}
-      </p>
-
-      <div class="flex flex-wrap gap-2">
-        <button
-          v-if="!correct && chosen != null"
-          type="button"
-          class="rounded-lg border border-ink-600 px-3 py-2 text-sm text-ink-200 transition-colors hover:border-accent-400"
-          @click="playMyAnswer"
-        >
-          Play my answer
-        </button>
-        <RouterLink
-          v-for="link in fingeringLinks"
-          :key="link.midi"
-          :to="{ name: 'note', params: { note: link.note } }"
-          class="rounded-lg border border-ink-600 px-3 py-2 text-sm text-ink-200 transition-colors hover:border-accent-400"
-        >
-          {{ link.label }} on {{ settings.instrument.name }}
-        </RouterLink>
-      </div>
-    </section>
-
-    <section class="flex items-center justify-between rounded-xl border border-ink-800 px-4 py-3 text-sm">
-      <span class="text-ink-200">
-        Session
-        <span class="font-semibold text-ink-50">{{ trainer.sessionCorrect }}/{{ trainer.sessionAttempts }}</span>
-      </span>
-      <span class="text-ink-200">
-        Streak <span class="font-semibold text-ink-50">{{ trainer.streak }}</span>
-        <span class="text-ink-400"> (best {{ trainer.bestStreak }})</span>
-      </span>
-    </section>
-
-    <details class="rounded-xl border border-ink-800 px-4 py-3">
-      <summary class="cursor-pointer text-sm font-medium text-ink-200">Statistics</summary>
-      <table class="mt-3 w-full text-sm">
-        <tbody>
-          <tr v-for="item in gridItems" :key="item" class="border-t border-ink-800">
-            <td class="py-1.5 pr-3 text-ink-200">
-              {{ itemLabel(item) }}
-              <span v-if="mode === 'interval'" class="text-xs text-ink-400">{{ INTERVAL_NAMES[item].long }}</span>
-            </td>
-            <td class="py-1.5 text-right tabular-nums text-ink-400">{{ accuracy(item) }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <button
-        type="button"
-        class="mt-3 rounded-lg border border-ink-700 px-3 py-2 text-xs text-ink-400 transition-colors hover:border-red-400 hover:text-red-300"
-        @click="resetStats"
+      <div
+        v-else
+        role="status"
+        class="w-full space-y-3 border bg-ink-900 p-4"
+        :class="correct ? 'border-accent-400' : 'border-[#f0b44c]'"
       >
-        Reset {{ MODE_LABELS[mode].title.toLowerCase() }} progress
+        <p class="flex items-center gap-2 text-lg font-semibold" :class="correct ? 'text-accent-400' : 'text-[#f0b44c]'">
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+            <path v-if="correct" d="M5 12l5 5L20 7" />
+            <path v-else d="M6 6l12 12M18 6L6 18" />
+          </svg>
+          {{ correct ? 'Right' : 'Not quite' }} — {{ answerText }}
+        </p>
+        <div class="flex flex-wrap gap-6">
+          <figure v-for="(midi, i) in question.midis" :key="i" class="flex flex-col items-center gap-1">
+            <StaffPosition :note="canonicalNote(midi)" :clef="clefFor(midi)" />
+            <figcaption class="text-xs text-ink-200">
+              {{ midiLabel(midi) }}
+              <span v-if="question.midis.length > 1" class="text-ink-400">
+                {{ question.mode === 'reference' ? (i === 0 ? '(reference)' : '(target)') : `(${i + 1})` }}
+              </span>
+            </figcaption>
+          </figure>
+        </div>
+        <p v-if="unlockMessage" class="bg-accent-400/15 px-3 py-2 text-sm text-accent-300">{{ unlockMessage }}</p>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="h-11 flex-1 border border-ink-700 px-3 text-sm text-ink-200 transition-colors hover:border-accent-400"
+            @click="replay"
+          >
+            Hear it again
+          </button>
+          <button
+            v-if="!correct && chosen != null"
+            type="button"
+            class="h-11 flex-1 border border-ink-700 px-3 text-sm text-ink-200 transition-colors hover:border-accent-400"
+            @click="playMyAnswer"
+          >
+            Hear my answer
+          </button>
+          <RouterLink
+            v-for="link in fingeringLinks"
+            :key="link.midi"
+            :to="{ name: 'note', params: { note: link.note } }"
+            class="flex h-11 flex-1 items-center justify-center border border-ink-700 px-3 text-sm whitespace-nowrap text-ink-200 transition-colors hover:border-accent-400"
+          >
+            {{ link.label }} on {{ settings.instrument.shortName }}
+          </RouterLink>
+        </div>
+      </div>
+    </section>
+
+    <section aria-label="Answers" class="grid gap-1.5" :class="mode === 'interval' ? 'grid-cols-3' : 'grid-cols-4'">
+      <button
+        v-for="item in gridItems"
+        :key="item"
+        type="button"
+        class="flex min-h-14 flex-col items-center justify-center border px-1 text-center transition-colors disabled:cursor-default"
+        :class="answerClass(item)"
+        :disabled="!question || answered || !items.includes(item)"
+        @click="answer(item)"
+      >
+        <span class="text-[15px] font-semibold">{{ itemLabel(item) }}</span>
+        <span v-if="mode === 'interval'" class="text-[10px] leading-tight opacity-75">{{ INTERVAL_NAMES[item].long }}</span>
       </button>
-    </details>
+    </section>
+
+    <button
+      v-if="answered"
+      type="button"
+      class="h-14 w-full bg-accent-400 text-base font-semibold text-ink-950 transition-colors hover:bg-accent-300"
+      @click="next"
+    >
+      Next
+    </button>
+
+    <BottomSheet :open="panelOpen" label="Exercise" @close="panelOpen = false">
+      <div class="space-y-5 px-4">
+        <div class="grid grid-cols-3 border border-ink-700" role="tablist" aria-label="Exercise">
+          <button
+            v-for="m in MODES"
+            :key="m"
+            type="button"
+            role="tab"
+            :aria-selected="mode === m"
+            class="h-11 text-sm font-semibold transition-colors not-first:border-l not-first:border-ink-700"
+            :class="mode === m ? 'bg-ink-800 text-ink-50' : 'text-ink-400 hover:text-ink-200'"
+            @click="setMode(m)"
+          >
+            {{ MODE_LABELS[m].title }}
+          </button>
+        </div>
+        <p class="-mt-2 text-xs text-ink-400">{{ MODE_LABELS[mode].hint }}</p>
+
+        <section class="space-y-2">
+          <h2 class="text-[11px] font-semibold tracking-wider text-ink-400 uppercase">Level</h2>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="level in levelCount"
+              :key="level"
+              type="button"
+              class="h-11 min-w-11 border px-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35"
+              :class="progress.level === level ? 'border-accent-400 bg-accent-400 text-ink-950' : 'border-ink-700 text-ink-200 hover:border-ink-400'"
+              :disabled="level > progress.unlocked"
+              :aria-label="level > progress.unlocked ? `Level ${level}, locked` : `Level ${level}`"
+              :aria-pressed="progress.level === level"
+              @click="setLevel(level); panelOpen = false"
+            >
+              {{ level }}
+            </button>
+          </div>
+          <p class="text-xs text-ink-400">{{ items.map(itemLabel).join(' · ') }}</p>
+        </section>
+
+        <section class="space-y-1">
+          <h2 class="text-[11px] font-semibold tracking-wider text-ink-400 uppercase">
+            Right answers · best streak {{ trainer.bestStreak }}
+          </h2>
+          <ul>
+            <li v-for="item in gridItems" :key="item" class="flex h-9 items-center gap-3 border-b border-ink-800">
+              <span class="w-12 shrink-0 text-sm font-semibold text-ink-50">{{ itemLabel(item) }}</span>
+              <span class="h-2 flex-1 bg-ink-800" aria-hidden="true">
+                <span
+                  class="block h-full"
+                  :class="(share(item) ?? 0) >= 0.75 ? 'bg-accent-400' : 'bg-[#f0b44c]'"
+                  :style="{ width: `${(share(item) ?? 0) * 100}%` }"
+                />
+              </span>
+              <span class="w-24 shrink-0 text-right text-xs text-ink-200 tabular-nums">{{ accuracy(item) }}</span>
+            </li>
+          </ul>
+        </section>
+
+        <button
+          type="button"
+          class="h-11 w-full border border-ink-700 text-xs text-ink-400 transition-colors hover:border-red-400 hover:text-red-300"
+          @click="resetStats"
+        >
+          Reset {{ MODE_LABELS[mode].title.toLowerCase() }} progress
+        </button>
+      </div>
+    </BottomSheet>
   </div>
 </template>

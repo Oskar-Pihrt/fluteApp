@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import KeyChart from '@/components/KeyChart.vue'
 import NoteBadge from '@/components/NoteBadge.vue'
 import PlayButton from '@/components/PlayButton.vue'
-import StaffPosition from '@/components/StaffPosition.vue'
+import type { Fingering } from '@/domain/fingering'
 import type { KeyId } from '@/domain/keys'
 import {
   canonicalNote,
-  hasEnharmonic,
   nearestFingerings,
+  noteLabel,
   noteLabelWithEnharmonic,
   notesForKeys,
   unavailableKeys,
@@ -19,9 +19,10 @@ import { useSettingsStore } from '@/stores/settings'
 /**
  * Feature 1 — pick the keys you press, get the notes it produces.
  *
- * The first two octaves share fingerings, so a match commonly returns two
- * notes an octave apart. That is shown as a list rather than a
- * single answer, on purpose.
+ * The chart takes the screen; the answer sits in a panel pinned above the tab
+ * bar, so it stays in view while the keys are tapped. The first two octaves
+ * share fingerings, so a match commonly returns two notes an octave apart:
+ * the panel leads with one and offers the others beside it.
  */
 
 const settings = useSettingsStore()
@@ -34,19 +35,33 @@ const unavailable = computed(() => unavailableKeys(settings.context))
 const matches = computed(() => notesForKeys(selected.value, settings.context, half.value))
 const touched = computed(() => selected.value.length > 0 || half.value.length > 0)
 
-/** Where the echoed match sits, as a percentage of the chart's box. */
-const matchPosition = computed(() => {
-  const chart = settings.instrument.chart
-  return {
-    left: `${(chart.matchAnchor.x / chart.width) * 100}%`,
-    top: `${(chart.matchAnchor.y / chart.height) * 100}%`,
-  }
-})
+/** Which of several matches the panel leads with. */
+const shownIndex = ref(0)
+const shown = computed(() => matches.value[Math.min(shownIndex.value, matches.value.length - 1)] ?? null)
+const others = computed(() => matches.value.filter((match) => match !== shown.value))
+watch(matches, () => (shownIndex.value = 0))
+
 const suggestions = computed(() =>
   matches.value.length || !touched.value
     ? []
-    : nearestFingerings(selected.value, settings.context, 4, half.value),
+    : nearestFingerings(selected.value, settings.context, 3, half.value),
 )
+
+/**
+ * On a phone the whole chart should fit between the title and the answer
+ * panel, so its height follows the screen; from `md` up it is drawn large.
+ */
+const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
+const onResize = () => (viewport.value = { width: window.innerWidth, height: window.innerHeight })
+window.addEventListener('resize', onResize)
+onBeforeUnmount(() => window.removeEventListener('resize', onResize))
+const chartHeight = computed(() => {
+  if (viewport.value.width >= 768) return undefined
+  const chart = settings.instrument.chart
+  const large = (chart.pixelWidth.lg * chart.height) / chart.width
+  // App header, title, answer panel, tab bar and the gaps between them.
+  return Math.max(260, Math.min(large, viewport.value.height - 350))
+})
 
 // A key set from one instrument means nothing on another.
 watch(
@@ -58,138 +73,117 @@ function reset() {
   selected.value = []
   half.value = []
 }
+
+function apply(fingering: Fingering) {
+  selected.value = [...fingering.keys]
+  half.value = [...fingering.partial]
+}
+
+function show(note: string) {
+  shownIndex.value = Math.max(0, matches.value.findIndex((match) => match.note === note))
+}
 </script>
 
 <template>
-  <div class="space-y-6">
-    <header class="flex items-baseline justify-between gap-4">
-      <div>
-        <h1 class="text-xl">What note is this?</h1>
-        <p class="mt-1 text-sm text-ink-400">Tap the keys you hold down.</p>
+  <div class="space-y-4 pb-44 md:pb-0">
+    <header class="flex items-center gap-3">
+      <div class="min-w-0 flex-1">
+        <h1 class="text-2xl">What note is this?</h1>
+        <p class="mt-0.5 text-sm text-ink-400">
+          {{ settings.instrument.shortName }} · tap the keys you hold down
+        </p>
       </div>
       <button
-        v-if="touched"
         type="button"
-        class="shrink-0 rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 transition-colors hover:border-ink-400"
+        class="flex h-11 w-11 shrink-0 items-center justify-center border border-ink-700 text-ink-200 transition-colors hover:border-ink-400 disabled:opacity-30"
+        aria-label="Clear keys"
+        :disabled="!touched"
         @click="reset"
       >
-        Clear
+        <svg viewBox="0 0 24 24" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4" />
+        </svg>
       </button>
     </header>
 
-    <!-- Stacked on a phone — the diagram is already tall, so putting the answer
-         beside it narrows the results column too much. Side by side from `sm`
-         up, where there's width to spare. -->
-    <div class="flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:gap-9">
-      <div class="relative shrink-0">
-        <KeyChart
-          v-model:keys="selected"
-          v-model:partial="half"
-          interactive
-          size="lg"
-          :unavailable="unavailable"
-        />
+    <div class="flex flex-col items-center gap-6 md:flex-row md:items-start md:gap-9">
+      <KeyChart
+        v-model:keys="selected"
+        v-model:partial="half"
+        interactive
+        size="lg"
+        :height="chartHeight"
+        :unavailable="unavailable"
+        class="shrink-0"
+      />
 
-        <!-- On a phone the answer is otherwise below the tall diagram, out of
-             sight while tapping keys. Exact matches are echoed in the empty
-             space the instrument's chart leaves free (`matchAnchor`); the full
-             cards still follow underneath. -->
-        <ul
-          v-if="matches.length"
-          class="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 sm:hidden"
-          :style="matchPosition"
-          aria-hidden="true"
-        >
-          <li v-for="match in matches" :key="match.id" class="whitespace-nowrap">
-            <NoteBadge :note="match.note" size="md" />
-          </li>
-        </ul>
-      </div>
+      <!-- The answer. Pinned above the tab bar on a phone; beside the chart from `md` up. -->
+      <section
+        aria-live="polite"
+        aria-label="Result"
+        class="fixed inset-x-0 z-10 border-t border-ink-700 bg-ink-900 px-4 pt-3 pb-3.5 md:static md:w-full md:min-w-0 md:flex-1 md:border md:p-4"
+        style="bottom: calc(var(--safe-bottom) + var(--tabbar-height))"
+      >
+        <div class="mx-auto max-w-3xl">
+          <!-- Nothing pressed yet. -->
+          <p v-if="!touched" class="py-4 text-center text-sm text-ink-400">Your note appears here.</p>
 
-      <div class="w-full min-w-0 flex-1 space-y-4">
-        <!-- No selection yet -->
-        <p
-          v-if="!touched"
-          class="rounded-xl border border-dashed border-ink-700 px-3 py-8 text-center text-sm text-ink-400"
-        >
-          Your note appears here.
-        </p>
-
-        <!-- Matches -->
-        <section v-else-if="matches.length" class="space-y-3">
-          <h2 class="text-xs font-semibold uppercase tracking-wider text-ink-400">
-            {{ matches.length === 1 ? 'This fingering plays' : `Plays ${matches.length} notes` }}
-          </h2>
-
-          <ul class="space-y-2.5">
-            <li
-              v-for="match in matches"
-              :key="match.id"
-              class="rounded-xl border border-ink-700 bg-ink-900 px-4 py-3.5"
-            >
-              <div class="flex items-center gap-3">
-                <StaffPosition :note="match.note" size="sm" class="shrink-0" />
-                <NoteBadge :note="match.note" size="lg" />
-                <PlayButton :note="match.note" class="ml-auto shrink-0" />
+          <!-- A match. -->
+          <template v-else-if="shown">
+            <div class="flex items-center gap-3">
+              <div class="min-w-0 flex-1">
+                <p class="flex flex-wrap items-baseline gap-x-2">
+                  <NoteBadge :note="shown.note" size="md" />
+                  <button
+                    v-for="other in others"
+                    :key="other.id"
+                    type="button"
+                    class="text-base text-ink-400 underline decoration-ink-600 underline-offset-4 hover:text-ink-200"
+                    @click="show(other.note)"
+                  >
+                    or {{ noteLabel(other.note) }}
+                  </button>
+                </p>
+                <p class="mt-0.5 truncate text-xs text-ink-400">
+                  {{ noteLabelWithEnharmonic(shown.note) }}
+                  <span v-if="shown.kind !== 'primary'" class="text-accent-400">· {{ shown.kind }} fingering</span>
+                  <span v-if="others.length && !shown.comment"> · same keys, other octave</span>
+                  <span v-if="shown.comment"> · {{ shown.comment }}</span>
+                </p>
               </div>
+              <PlayButton :note="shown.note" class="h-12! w-12! shrink-0 border-0! bg-accent-400 text-ink-950!" />
+            </div>
+            <RouterLink
+              :to="{ name: 'note', params: { note: canonicalNote(shown.midi) } }"
+              class="mt-3 flex h-11 items-center justify-center border border-ink-700 text-sm text-ink-200 transition-colors hover:border-accent-400"
+            >
+              All ways to play {{ noteLabel(shown.note) }}
+            </RouterLink>
+          </template>
 
-              <!-- Only worth a second line when it adds something: an
-                   alternative spelling, or a non-standard fingering. -->
-              <p
-                v-if="hasEnharmonic(match.note) || match.kind !== 'primary'"
-                class="mt-1.5 text-sm text-ink-400"
-              >
-                <span v-if="hasEnharmonic(match.note)">{{
-                  noteLabelWithEnharmonic(match.note)
-                }}</span>
-                <span v-if="match.kind !== 'primary'" class="text-accent-400">
-                  {{ hasEnharmonic(match.note) ? '· ' : '' }}{{ match.kind }} fingering
-                </span>
-              </p>
-
-              <p v-if="match.comment" class="mt-2 text-xs leading-relaxed text-ink-400">
-                {{ match.comment }}
-              </p>
-
-              <RouterLink
-                :to="{ name: 'note', params: { note: canonicalNote(match.midi) } }"
-                class="mt-3 inline-block text-xs font-medium text-accent-400 hover:text-accent-300"
-              >
-                All ways to play this note →
-              </RouterLink>
-            </li>
-          </ul>
-        </section>
-
-        <!-- Near misses -->
-        <section v-else class="space-y-3">
-          <div class="rounded-xl border border-ink-700 bg-ink-900 px-4 py-4">
-            <p class="text-sm text-ink-200">No documented note for this combination.</p>
-            <p class="mt-1 text-xs text-ink-400">
-              Plenty of key combinations produce no usable pitch on the {{ settings.instrument.noun }}.
+          <!-- No match: the nearest fingerings, one tap to set. -->
+          <template v-else>
+            <p class="text-sm font-semibold text-ink-50">No note for these keys</p>
+            <p class="mt-0.5 text-xs text-ink-400">
+              {{ suggestions.length ? 'Closest fingerings — tap one to set it:' : `Plenty of combinations play nothing on the ${settings.instrument.noun}.` }}
             </p>
-          </div>
-
-          <div v-if="suggestions.length" class="space-y-2">
-            <h2 class="text-xs font-semibold uppercase tracking-wider text-ink-400">Did you mean</h2>
-            <ul class="space-y-2">
-              <li v-for="suggestion in suggestions" :key="suggestion.fingering.id">
-                <button
-                  type="button"
-                  class="flex w-full items-center gap-3 rounded-xl border border-ink-700 bg-ink-900 px-4 py-3 text-left transition-colors hover:border-accent-400"
-                  @click="selected = [...suggestion.fingering.keys]"
-                >
-                  <NoteBadge :note="suggestion.fingering.note" />
-                  <span class="ml-auto text-xs text-ink-400">
-                    {{ suggestion.distance }}
-                    {{ suggestion.distance === 1 ? 'key' : 'keys' }} away
-                  </span>
-                </button>
-              </li>
-            </ul>
-          </div>
-        </section>
-      </div>
+            <div v-if="suggestions.length" class="mt-2.5 grid grid-cols-3 gap-2">
+              <button
+                v-for="suggestion in suggestions"
+                :key="suggestion.fingering.id"
+                type="button"
+                class="flex h-16 flex-col items-center justify-center gap-0.5 border border-ink-700 bg-ink-950 transition-colors hover:border-accent-400"
+                @click="apply(suggestion.fingering)"
+              >
+                <NoteBadge :note="suggestion.fingering.note" size="sm" />
+                <span class="text-[11px] text-ink-400">
+                  {{ suggestion.distance }} {{ suggestion.distance === 1 ? 'key' : 'keys' }} away
+                </span>
+              </button>
+            </div>
+          </template>
+        </div>
+      </section>
     </div>
   </div>
 </template>

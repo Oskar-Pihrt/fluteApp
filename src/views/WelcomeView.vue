@@ -2,40 +2,48 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppLogo from '@/components/AppLogo.vue'
+import BottomSheet from '@/components/BottomSheet.vue'
 import InstrumentPicker from '@/components/InstrumentPicker.vue'
-import type { InstrumentId } from '@/instruments'
-import { TABS } from '@/navigation'
+import { CATALOG, getMeta, type InstrumentId } from '@/instruments'
 import { installed, installPlatform, installPrompt, promptInstall, runsInstalled } from '@/platform/install'
 import { useSettingsStore } from '@/stores/settings'
 
 /**
- * First launch, in three short steps: what the app is and what each tab does,
- * how to install it, and which instruments the player plays. Only those go in
- * the switch and get downloaded; the rest of the catalog stays one tap away
- * in Setup. The install step is skipped when the app already runs installed.
+ * First launch, on one screen: what the app is, which instruments the player
+ * plays, and Start. The common instruments are a tap each; the whole catalog
+ * is behind "All instruments". Only the chosen ones go in the switch and get
+ * downloaded — the rest stay one tap away in Setup.
  */
 
 const router = useRouter()
 const settings = useSettingsStore()
 
-type Step = 'about' | 'install' | 'instruments'
-const steps: Step[] = runsInstalled() ? ['about', 'instruments'] : ['about', 'install', 'instruments']
-const stepIndex = ref(0)
-const step = computed(() => steps[stepIndex.value])
-
-const platform = installPlatform()
+/** The instruments most players are looking for. */
+const COMMON: InstrumentId[] = ['flute', 'altoSax', 'clarinetBb', 'recorderSopranoBaroque', 'trumpetBb', 'oboe']
+/** Short names that still say which instrument it is ("Alto" alone doesn't). */
+const LABELS: Partial<Record<InstrumentId, string>> = { altoSax: 'Alto sax', recorderSopranoBaroque: 'Recorder' }
+function label(id: InstrumentId): string {
+  return LABELS[id] ?? getMeta(id).shortName
+}
+const total = Object.keys(CATALOG).length
 
 const chosen = ref<InstrumentId[]>([...settings.visibleInstruments])
+const browsing = ref(false)
 const working = ref(false)
 const failed = ref(false)
+
+const platform = installPlatform()
+const showInstall = !runsInstalled()
 
 function toggle(id: InstrumentId, on: boolean) {
   chosen.value = on ? [...chosen.value, id] : chosen.value.filter((other) => other !== id)
 }
 
-async function install() {
-  if (await promptInstall()) stepIndex.value++
-}
+const startLabel = computed(() => {
+  if (working.value) return 'Downloading…'
+  if (chosen.value.length === 1) return `Start with ${label(chosen.value[0])}`
+  return `Start · ${chosen.value.length} instruments`
+})
 
 async function start() {
   working.value = true
@@ -57,164 +65,90 @@ async function start() {
 </script>
 
 <template>
-  <div class="mx-auto flex min-h-[calc(100svh-6rem)] max-w-md flex-col gap-6">
-    <!-- Progress: one dot per step. -->
-    <div class="flex justify-center gap-1.5" aria-hidden="true">
-      <span
-        v-for="(_, index) in steps"
-        :key="index"
-        class="h-1.5 rounded-full transition-all"
-        :class="index === stepIndex ? 'w-6 bg-accent-400' : 'w-1.5 bg-ink-700'"
-      />
-    </div>
+  <div class="mx-auto flex min-h-[calc(100svh-2.75rem)] max-w-md flex-col gap-7">
+    <header>
+      <AppLogo :size="56" />
+      <h1 class="mt-4 text-[28px] leading-tight font-bold">Fingerings for every note you read</h1>
+      <p class="mt-2 text-sm leading-relaxed text-ink-400">
+        Look up a fingering, photograph your sheet music, train your ear. No account, nothing uploaded, works
+        offline.
+      </p>
+    </header>
 
-    <!-- 1 — What this is. -->
-    <section v-if="step === 'about'" class="space-y-6">
-      <header class="flex flex-col items-center gap-4 text-center">
-        <AppLogo :size="88" />
-        <div>
-          <h1 class="text-2xl">Welcome to TimbreMap</h1>
-          <p class="mt-1.5 text-sm leading-relaxed text-ink-400">
-            A fingering reference and practice companion for wind instruments. Everything runs on
-            your device — no account, nothing uploaded, and it works offline.
-          </p>
-        </div>
-      </header>
-
-      <ul class="space-y-2">
-        <li
-          v-for="tab in TABS"
-          :key="tab.name"
-          class="flex items-start gap-3 rounded-xl border border-ink-700 px-4 py-3"
+    <section class="space-y-2.5">
+      <h2 class="text-base">What do you play?</h2>
+      <div class="grid grid-cols-2 gap-2">
+        <button
+          v-for="id in COMMON"
+          :key="id"
+          type="button"
+          class="flex h-14 items-center gap-2.5 border px-3 text-left text-sm text-ink-50 transition-colors"
+          :class="chosen.includes(id) ? 'border-accent-400 bg-ink-800' : 'border-ink-700 hover:border-ink-400'"
+          :aria-pressed="chosen.includes(id)"
+          :disabled="chosen.length === 1 && chosen.includes(id)"
+          @click="toggle(id, !chosen.includes(id))"
         >
-          <svg
-            viewBox="0 0 24 24"
-            class="mt-0.5 h-5 w-5 shrink-0 text-accent-400"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.7"
-            stroke-linecap="round"
-            stroke-linejoin="round"
+          <span
+            class="flex h-[18px] w-[18px] shrink-0 items-center justify-center border-2"
+            :class="chosen.includes(id) ? 'border-accent-400 bg-accent-400 text-ink-950' : 'border-ink-600'"
             aria-hidden="true"
           >
-            <path :d="tab.icon" />
-          </svg>
-          <span>
-            <span class="block text-sm font-semibold text-ink-50">{{ tab.label }}</span>
-            <span class="mt-0.5 block text-xs leading-relaxed text-ink-400">{{ tab.about }}</span>
+            <svg v-if="chosen.includes(id)" viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="4">
+              <path d="M5 12l5 5L20 7" />
+            </svg>
           </span>
-        </li>
-      </ul>
-    </section>
-
-    <!-- 2 — Put it on the home screen. -->
-    <section v-else-if="step === 'install'" class="space-y-5">
-      <header>
-        <h1 class="text-2xl">Install it</h1>
-        <p class="mt-1.5 text-sm leading-relaxed text-ink-400">
-          TimbreMap is a web app you can install like any other: it gets its own icon, opens full
-          screen and works without a connection. Nothing to download from a store.
-        </p>
-      </header>
-
-      <p
-        v-if="installed"
-        class="rounded-xl border border-accent-400 bg-ink-800 px-4 py-3 text-sm text-ink-50"
-      >
-        Installed — you’ll find TimbreMap with your other apps.
-      </p>
-
-      <button
-        v-else-if="installPrompt"
-        type="button"
-        class="w-full rounded-lg border border-accent-400 px-4 py-3 text-sm font-semibold text-accent-400 transition-colors hover:bg-ink-800"
-        @click="install"
-      >
-        Install TimbreMap
-      </button>
-
-      <div class="space-y-2">
-        <h2 class="text-xs font-semibold uppercase tracking-wider text-ink-400">
-          {{ installPrompt ? 'Or by hand' : 'How' }}
-        </h2>
-        <ol class="space-y-2 text-sm leading-relaxed text-ink-200">
-          <template v-if="platform === 'ios'">
-            <li class="rounded-xl border border-ink-700 px-4 py-3">
-              <strong class="text-ink-50">iPhone / iPad (Safari):</strong> tap
-              <strong class="text-ink-50">Share</strong> (the square with an arrow), then
-              <strong class="text-ink-50">Add to Home Screen</strong>.
-            </li>
-          </template>
-          <template v-else-if="platform === 'android'">
-            <li class="rounded-xl border border-ink-700 px-4 py-3">
-              <strong class="text-ink-50">Android (Chrome):</strong> open the
-              <strong class="text-ink-50">⋮</strong> menu and choose
-              <strong class="text-ink-50">Install app</strong> (or
-              <strong class="text-ink-50">Add to Home screen</strong>).
-            </li>
-          </template>
-          <template v-else>
-            <li class="rounded-xl border border-ink-700 px-4 py-3">
-              <strong class="text-ink-50">Chrome or Edge:</strong> click the install icon at the
-              right end of the address bar, or open the menu and choose
-              <strong class="text-ink-50">Install TimbreMap</strong>.
-            </li>
-            <li class="rounded-xl border border-ink-700 px-4 py-3">
-              <strong class="text-ink-50">Safari on a Mac:</strong>
-              <strong class="text-ink-50">File → Add to Dock</strong>.
-            </li>
-          </template>
-        </ol>
-        <p class="text-xs leading-relaxed text-ink-400">
-          Only the instruments you pick next are downloaded. Your sheets stay on this device — back
-          them up from Setup.
-        </p>
+          {{ label(id) }}
+        </button>
       </div>
+      <button type="button" class="py-1 text-sm text-accent-400 hover:text-accent-300" @click="browsing = true">
+        All {{ total }} instruments<template v-if="chosen.some((id) => !COMMON.includes(id))">
+          · {{ chosen.filter((id) => !COMMON.includes(id)).length }} more chosen</template
+        >
+        →
+      </button>
     </section>
 
-    <!-- 3 — Which instruments. -->
-    <section v-else class="space-y-5">
-      <header>
-        <h1 class="text-2xl">What do you play?</h1>
-        <p class="mt-1.5 text-sm leading-relaxed text-ink-400">
-          Pick your instruments. They go in the switch at the top, and only they are downloaded —
-          you can add or remove them any time in Setup.
-        </p>
-      </header>
-
-      <InstrumentPicker :selected="chosen" @toggle="toggle" />
-
+    <div class="mt-auto space-y-3 pb-4">
+      <p v-if="showInstall && !installed" class="text-xs leading-relaxed text-ink-400">
+        <button
+          v-if="installPrompt"
+          type="button"
+          class="font-semibold text-accent-400 hover:text-accent-300"
+          @click="promptInstall()"
+        >
+          Install TimbreMap
+        </button>
+        <template v-else-if="platform === 'ios'">Tip: Share → Add to Home Screen installs it like an app.</template>
+        <template v-else-if="platform === 'android'">Tip: ⋮ → Install app puts it on your home screen.</template>
+        <template v-else>Tip: the install icon in the address bar makes it an app.</template>
+        <template v-if="installPrompt"> — its own icon, full screen, works offline.</template>
+      </p>
+      <p class="text-xs text-ink-400">Only the instruments you pick are downloaded. Add more later in Setup.</p>
       <p v-if="failed" role="alert" class="text-xs text-red-300">
         Couldn’t download your instruments — check your connection and try again.
       </p>
-    </section>
-
-    <div class="mt-auto flex gap-2 pb-4">
       <button
-        v-if="stepIndex > 0"
         type="button"
-        class="rounded-lg border border-ink-600 px-4 py-3 text-sm font-medium text-ink-200 transition-colors hover:border-ink-400"
-        @click="stepIndex--"
-      >
-        Back
-      </button>
-      <button
-        v-if="step !== 'instruments'"
-        type="button"
-        class="flex-1 rounded-lg bg-accent-400 px-4 py-3 text-sm font-semibold text-ink-950 transition-colors hover:bg-accent-300"
-        @click="stepIndex++"
-      >
-        {{ step === 'install' ? 'Next' : 'Get started' }}
-      </button>
-      <button
-        v-else
-        type="button"
-        class="flex-1 rounded-lg bg-accent-400 px-4 py-3 text-sm font-semibold text-ink-950 transition-colors hover:bg-accent-300 disabled:opacity-50"
+        class="h-14 w-full bg-accent-400 text-base font-bold text-ink-950 transition-colors hover:bg-accent-300 disabled:opacity-50"
         :disabled="working || !chosen.length"
         @click="start"
       >
-        {{ working ? 'Downloading…' : 'Start' }}
+        {{ startLabel }}
       </button>
     </div>
+
+    <BottomSheet :open="browsing" label="All instruments" @close="browsing = false">
+      <div class="space-y-3 px-4">
+        <h2 class="text-lg">All instruments</h2>
+        <InstrumentPicker :selected="chosen" @toggle="toggle" />
+        <button
+          type="button"
+          class="h-12 w-full bg-accent-400 text-sm font-semibold text-ink-950 hover:bg-accent-300"
+          @click="browsing = false"
+        >
+          Done
+        </button>
+      </div>
+    </BottomSheet>
   </div>
 </template>

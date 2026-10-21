@@ -29,6 +29,8 @@
   html {
     /* Keeps the fixed tab bar clear of the Android/iOS gesture area. */
     --safe-bottom: env(safe-area-inset-bottom, 0px);
+    /* The phone tab bar, without the gesture area — panels pinned above it use this. */
+    --tabbar-height: 61px;
     background-color: var(--color-ink-950);
     color: var(--color-ink-200);
     font-family: var(--font-sans);
