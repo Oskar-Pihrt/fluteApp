@@ -65,11 +65,13 @@ async function start() {
 </script>
 
 <template>
-  <div class="mx-auto flex min-h-[calc(100svh-2.75rem)] max-w-md flex-col gap-7">
+  <!-- One screen on a phone: short screens drop the logo and tighten up, and
+       the start button stays pinned to the bottom whatever happens above it. -->
+  <div class="mx-auto flex min-h-[calc(100svh-2.75rem)] max-w-md flex-col gap-7 short:gap-4 shorter:gap-3">
     <header>
-      <AppLogo :size="56" />
-      <h1 class="mt-4 text-[28px] leading-tight font-bold">Fingerings for every note you read</h1>
-      <p class="mt-2 text-sm leading-relaxed text-ink-400">
+      <AppLogo :size="56" class="mb-4 short:hidden" />
+      <h1 class="text-[28px] leading-tight font-bold short:text-2xl">Fingerings for every note you read</h1>
+      <p class="mt-2 text-sm leading-relaxed text-ink-400 shorter:mt-1">
         Look up a fingering, photograph your sheet music, train your ear. No account, nothing uploaded, works
         offline.
       </p>
@@ -82,7 +84,7 @@ async function start() {
           v-for="id in COMMON"
           :key="id"
           type="button"
-          class="flex h-14 items-center gap-2.5 border px-3 text-left text-sm text-ink-50 transition-colors"
+          class="flex h-14 items-center gap-2.5 border px-3 text-left text-sm text-ink-50 transition-colors short:h-12 shorter:h-11"
           :class="chosen.includes(id) ? 'border-accent-400 bg-ink-800' : 'border-ink-700 hover:border-ink-400'"
           :aria-pressed="chosen.includes(id)"
           :disabled="chosen.length === 1 && chosen.includes(id)"
@@ -108,7 +110,7 @@ async function start() {
       </button>
     </section>
 
-    <div class="mt-auto space-y-3 pb-4">
+    <div class="sticky bottom-0 mt-auto space-y-3 bg-ink-950 pt-2 pb-4 short:pb-0">
       <p v-if="showInstall && !installed" class="text-xs leading-relaxed text-ink-400">
         <button
           v-if="installPrompt"
