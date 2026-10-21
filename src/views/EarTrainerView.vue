@@ -28,7 +28,9 @@ import { useSettingsStore } from '@/stores/settings'
  * fingering links shown after an answer.
  *
  * One question fills the screen: a big play square in the middle, the answers
- * under the thumb. Exercise, level and statistics live in a panel behind the
+ * under the thumb. On a phone it is exactly one screen and never scrolls — the
+ * square and the staff drawings shrink to the room left, and the controls
+ * tighten on short screens. Exercise, level and statistics live in a panel behind the
  * button at the top.
  */
 
@@ -193,8 +195,8 @@ function answerClass(item: number): string {
 </script>
 
 <template>
-  <div class="flex min-h-[calc(100svh-12rem)] flex-col gap-4 md:min-h-0">
-    <header class="flex items-center justify-between gap-3">
+  <div class="flex min-h-0 flex-1 flex-col gap-3 pb-3 md:gap-4 md:pb-0">
+    <header class="flex shrink-0 items-center justify-between gap-3">
       <button
         type="button"
         class="flex h-11 items-center gap-2 border border-ink-700 px-3 text-sm font-semibold text-ink-50 transition-colors hover:border-ink-400"
@@ -212,7 +214,7 @@ function answerClass(item: number): string {
       </p>
     </header>
 
-    <div v-if="canUnlock" class="space-y-1.5">
+    <div v-if="canUnlock" class="shrink-0 space-y-1.5">
       <div
         class="flex gap-[3px]"
         role="img"
@@ -225,33 +227,33 @@ function answerClass(item: number): string {
           :class="bar === null ? 'bg-ink-800' : bar ? 'bg-accent-400' : 'bg-ink-600'"
         />
       </div>
-      <p class="text-xs text-ink-400">
+      <p class="text-xs text-ink-400 short:sr-only">
         Level {{ progress.level + 1 }} after {{ UNLOCK_CORRECT }} of the last {{ UNLOCK_WINDOW }} right
       </p>
     </div>
 
-    <p v-if="loadError" class="border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+    <p v-if="loadError" class="shrink-0 border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
       {{ loadError }}
     </p>
 
     <!-- The question, or what it was. -->
-    <section class="flex flex-1 flex-col items-center justify-center gap-3 py-2">
+    <section class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 max-md:[container-type:size] md:py-2">
       <template v-if="!question || !answered">
         <button
           type="button"
-          class="flex h-36 w-36 items-center justify-center bg-accent-400 text-ink-950 transition-colors hover:bg-accent-300 active:bg-accent-500 disabled:opacity-50"
+          class="flex size-[clamp(4rem,calc(100cqh-5rem),9rem)] shrink-0 items-center justify-center bg-accent-400 text-ink-950 transition-colors hover:bg-accent-300 active:bg-accent-500 disabled:opacity-50"
           :disabled="!loaded"
           :aria-label="question ? 'Play it again' : 'Start'"
           @click="question ? replay() : next()"
         >
-          <svg v-if="question" viewBox="0 0 24 24" class="h-14 w-14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <svg v-if="question" viewBox="0 0 24 24" class="size-[40%]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
             <path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12" />
           </svg>
-          <svg v-else viewBox="0 0 24 24" class="h-14 w-14" fill="currentColor" aria-hidden="true">
+          <svg v-else viewBox="0 0 24 24" class="size-[40%]" fill="currentColor" aria-hidden="true">
             <path d="M7 4l13 8-13 8z" />
           </svg>
         </button>
-        <p class="text-sm text-ink-200">
+        <p class="text-center text-sm text-ink-200">
           <template v-if="!loaded && !loadError">Loading piano…</template>
           <template v-else-if="!question">{{ MODE_LABELS[mode].hint }}</template>
           <template v-else-if="question.mode === 'reference' && question.root != null">
@@ -266,20 +268,25 @@ function answerClass(item: number): string {
       <div
         v-else
         role="status"
-        class="w-full space-y-3 border bg-ink-900 p-4"
+        class="flex min-h-0 w-full flex-1 flex-col gap-2.5 border bg-ink-900 p-3 md:flex-none md:gap-3 md:p-4"
         :class="correct ? 'border-accent-400' : 'border-[#f0b44c]'"
       >
-        <p class="flex items-center gap-2 text-lg font-semibold" :class="correct ? 'text-accent-400' : 'text-[#f0b44c]'">
+        <p class="flex shrink-0 items-center gap-2 text-lg font-semibold" :class="correct ? 'text-accent-400' : 'text-[#f0b44c]'">
           <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
             <path v-if="correct" d="M5 12l5 5L20 7" />
             <path v-else d="M6 6l12 12M18 6L6 18" />
           </svg>
           {{ correct ? 'Right' : 'Not quite' }} — {{ answerText }}
         </p>
-        <div class="flex flex-wrap gap-6">
-          <figure v-for="(midi, i) in question.midis" :key="i" class="flex flex-col items-center gap-1">
-            <StaffPosition :note="canonicalNote(midi)" :clef="clefFor(midi)" />
-            <figcaption class="text-xs text-ink-200">
+        <!-- The staves take the room left over and shrink with it. -->
+        <div class="flex min-h-0 flex-1 justify-center gap-6 md:justify-start">
+          <figure v-for="(midi, i) in question.midis" :key="i" class="flex min-h-0 flex-col items-center gap-1">
+            <StaffPosition
+              :note="canonicalNote(midi)"
+              :clef="clefFor(midi)"
+              class="min-h-0 w-auto flex-1 max-md:max-h-[171px] md:flex-none"
+            />
+            <figcaption class="shrink-0 text-xs text-ink-200">
               {{ midiLabel(midi) }}
               <span v-if="question.midis.length > 1" class="text-ink-400">
                 {{ question.mode === 'reference' ? (i === 0 ? '(reference)' : '(target)') : `(${i + 1})` }}
@@ -287,11 +294,11 @@ function answerClass(item: number): string {
             </figcaption>
           </figure>
         </div>
-        <p v-if="unlockMessage" class="bg-accent-400/15 px-3 py-2 text-sm text-accent-300">{{ unlockMessage }}</p>
-        <div class="flex flex-wrap gap-2">
+        <p v-if="unlockMessage" class="shrink-0 bg-accent-400/15 px-3 py-2 text-sm text-accent-300">{{ unlockMessage }}</p>
+        <div class="flex shrink-0 flex-wrap gap-2">
           <button
             type="button"
-            class="h-11 flex-1 border border-ink-700 px-3 text-sm text-ink-200 transition-colors hover:border-accent-400"
+            class="h-10 flex-1 border border-ink-700 px-2 text-[13px] whitespace-nowrap text-ink-200 md:h-11 md:px-3 md:text-sm transition-colors hover:border-accent-400"
             @click="replay"
           >
             Hear it again
@@ -299,7 +306,7 @@ function answerClass(item: number): string {
           <button
             v-if="!correct && chosen != null"
             type="button"
-            class="h-11 flex-1 border border-ink-700 px-3 text-sm text-ink-200 transition-colors hover:border-accent-400"
+            class="h-10 flex-1 border border-ink-700 px-2 text-[13px] whitespace-nowrap text-ink-200 md:h-11 md:px-3 md:text-sm transition-colors hover:border-accent-400"
             @click="playMyAnswer"
           >
             Hear my answer
@@ -308,7 +315,7 @@ function answerClass(item: number): string {
             v-for="link in fingeringLinks"
             :key="link.midi"
             :to="{ name: 'note', params: { note: link.note } }"
-            class="flex h-11 flex-1 items-center justify-center border border-ink-700 px-3 text-sm whitespace-nowrap text-ink-200 transition-colors hover:border-accent-400"
+            class="flex h-10 flex-1 items-center justify-center border border-ink-700 px-2 text-[13px] whitespace-nowrap md:px-3 md:text-sm md:h-11 text-ink-200 transition-colors hover:border-accent-400"
           >
             {{ link.label }} on {{ settings.instrument.shortName }}
           </RouterLink>
@@ -316,12 +323,12 @@ function answerClass(item: number): string {
       </div>
     </section>
 
-    <section aria-label="Answers" class="grid gap-1.5" :class="mode === 'interval' ? 'grid-cols-3' : 'grid-cols-4'">
+    <section aria-label="Answers" class="grid shrink-0 grid-cols-4 gap-1.5">
       <button
         v-for="item in gridItems"
         :key="item"
         type="button"
-        class="flex min-h-14 flex-col items-center justify-center border px-1 text-center transition-colors disabled:cursor-default"
+        class="flex h-[clamp(2.5rem,7svh,3.5rem)] flex-col items-center justify-center border px-1 text-center transition-colors disabled:cursor-default"
         :class="answerClass(item)"
         :disabled="!question || answered || !items.includes(item)"
         @click="answer(item)"
@@ -334,7 +341,7 @@ function answerClass(item: number): string {
     <button
       v-if="answered"
       type="button"
-      class="h-14 w-full bg-accent-400 text-base font-semibold text-ink-950 transition-colors hover:bg-accent-300"
+      class="h-[clamp(2.75rem,7svh,3.5rem)] w-full shrink-0 bg-accent-400 text-base font-semibold text-ink-950 transition-colors hover:bg-accent-300"
       @click="next"
     >
       Next

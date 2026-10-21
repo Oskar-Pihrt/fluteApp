@@ -26,6 +26,12 @@ const bare = computed(() => route.meta.bare === true)
  * arrow. The sidebar stays on wider screens.
  */
 const immersive = computed(() => route.meta.immersive === true)
+/**
+ * Tool pages (fingering, ear trainer) must never scroll on a phone: the page
+ * is exactly one screen between the top bar and the tab bar, and the view
+ * shrinks its own content to fit. Wider screens scroll as usual.
+ */
+const fit = computed(() => route.meta.fit === true && !bare.value && !immersive.value)
 </script>
 
 <template>
@@ -73,11 +79,11 @@ const immersive = computed(() => route.meta.immersive === true)
       </RouterLink>
     </nav>
 
-    <div class="min-w-0 flex-1">
+    <div class="min-w-0 flex-1" :class="fit ? 'flex h-svh flex-col overflow-hidden md:block md:h-auto md:overflow-visible' : ''">
       <!-- Phones have no sidebar, so the instrument switch lives in a top bar. -->
       <header
         v-if="!bare && !immersive"
-        class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-ink-800 bg-ink-900/95 px-4 py-2.5 backdrop-blur md:hidden"
+        class="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-ink-800 bg-ink-900/95 px-4 py-2.5 backdrop-blur md:hidden"
       >
         <p class="flex items-center gap-2 text-sm font-semibold text-ink-50">
           <AppLogo :size="22" aria-hidden="true" alt="" />
@@ -88,7 +94,15 @@ const immersive = computed(() => route.meta.immersive === true)
 
       <main
         class="mx-auto w-full md:max-w-4xl md:px-10"
-        :class="immersive ? '' : bare ? 'max-w-3xl px-4 pt-5 pb-6 md:py-9' : 'max-w-3xl px-4 pt-5 pb-28 md:py-9'"
+        :class="
+          immersive
+            ? ''
+            : bare
+              ? 'max-w-3xl px-4 pt-5 pb-6 md:py-9'
+              : fit
+                ? 'flex min-h-0 max-w-3xl flex-1 flex-col px-4 pt-4 pb-[calc(var(--tabbar-height)+var(--safe-bottom))] md:block md:py-9'
+                : 'max-w-3xl px-4 pt-5 pb-28 md:py-9'
+        "
       >
         <RouterView />
       </main>

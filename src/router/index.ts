@@ -6,7 +6,7 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     name: 'finder',
     component: () => import('@/views/FingerFinderView.vue'),
-    meta: { title: 'Fingering' },
+    meta: { title: 'Fingering', fit: true },
   },
   {
     path: '/notes',
@@ -18,7 +18,7 @@ const routes: RouteRecordRaw[] = [
     path: '/notes/:note',
     name: 'note',
     component: () => import('@/views/NoteDetailView.vue'),
-    meta: { title: 'Note', parent: 'notes' },
+    meta: { title: 'Note', parent: 'notes', fit: true },
   },
   {
     path: '/sheets',
@@ -36,7 +36,7 @@ const routes: RouteRecordRaw[] = [
     path: '/ear',
     name: 'ear',
     component: () => import('@/views/EarTrainerView.vue'),
-    meta: { title: 'Ear' },
+    meta: { title: 'Ear', fit: true },
   },
   {
     path: '/settings',

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { Note } from 'tonal'
 import NoteFingerings from '@/components/NoteFingerings.vue'
@@ -11,6 +11,9 @@ import { useSettingsStore } from '@/stores/settings'
  * page. Reached from links elsewhere in the app (the fingering finder, a
  * sheet's note picker) rather than from the note library itself, which
  * unfolds the same content inline instead of navigating here.
+ *
+ * On a phone it is one screen: one fingering at a time, Lower/Higher pinned
+ * at the bottom. Wider screens list every fingering and scroll.
  */
 
 const route = useRoute()
@@ -31,6 +34,12 @@ const neighbours = computed(() => {
   }
 })
 
+const wideQuery = window.matchMedia('(min-width: 768px)')
+const wide = ref(wideQuery.matches)
+const onWide = () => (wide.value = wideQuery.matches)
+wideQuery.addEventListener('change', onWide)
+onBeforeUnmount(() => wideQuery.removeEventListener('change', onWide))
+
 // Switching instrument on a note page: that note may not exist on the other one.
 watch(
   () => settings.instrumentId,
@@ -43,21 +52,21 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="flex min-h-0 flex-1 flex-col gap-3 pb-3 md:block md:space-y-6 md:pb-0">
     <RouterLink
       :to="{ name: 'notes' }"
-      class="inline-flex items-center gap-1 text-xs font-medium text-ink-400 hover:text-ink-200"
+      class="inline-flex shrink-0 items-center gap-1 self-start text-xs font-medium text-ink-400 hover:text-ink-200"
     >
       <span aria-hidden="true">←</span> Note library
     </RouterLink>
 
-    <NoteFingerings :note="note" />
+    <NoteFingerings :note="note" :paged="!wide" />
 
-    <nav class="flex gap-3">
+    <nav class="flex shrink-0 gap-3">
       <RouterLink
         v-if="neighbours.prev"
         :to="{ name: 'note', params: { note: canonicalNote(Note.midi(neighbours.prev)!) } }"
-        class="flex-1 rounded-xl border border-ink-700 px-4 py-3 text-sm text-ink-200 transition-colors hover:border-accent-400"
+        class="flex-1 rounded-xl border border-ink-700 px-4 py-2 text-sm text-ink-200 md:py-3 transition-colors hover:border-accent-400"
       >
         <span class="text-xs text-ink-400">Lower</span>
         <br />
@@ -66,7 +75,7 @@ watch(
       <RouterLink
         v-if="neighbours.next"
         :to="{ name: 'note', params: { note: canonicalNote(Note.midi(neighbours.next)!) } }"
-        class="flex-1 rounded-xl border border-ink-700 px-4 py-3 text-right text-sm text-ink-200 transition-colors hover:border-accent-400"
+        class="flex-1 rounded-xl border border-ink-700 px-4 py-2 text-right md:py-3 text-sm text-ink-200 transition-colors hover:border-accent-400"
       >
         <span class="text-xs text-ink-400">Higher</span>
         <br />

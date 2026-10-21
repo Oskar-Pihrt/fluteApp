@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import KeyChart from '@/components/KeyChart.vue'
 import NoteBadge from '@/components/NoteBadge.vue'
@@ -48,19 +48,25 @@ const suggestions = computed(() =>
 )
 
 /**
- * On a phone the whole chart should fit between the title and the answer
- * panel, so its height follows the screen; from `md` up it is drawn large.
+ * On a phone the page is exactly one screen, so the chart takes whatever room
+ * the title and the answer panel leave — measured, not guessed, since phones
+ * differ by a couple of hundred pixels. From `md` up it is drawn large.
  */
-const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
-const onResize = () => (viewport.value = { width: window.innerWidth, height: window.innerHeight })
-window.addEventListener('resize', onResize)
-onBeforeUnmount(() => window.removeEventListener('resize', onResize))
+const chartBox = ref<HTMLElement | null>(null)
+const box = ref({ width: 0, height: 0 })
+const wide = ref(window.matchMedia('(min-width: 768px)').matches)
+const observer = new ResizeObserver(([entry]) => {
+  box.value = { width: entry.contentRect.width, height: entry.contentRect.height }
+  wide.value = window.matchMedia('(min-width: 768px)').matches
+})
+onMounted(() => chartBox.value && observer.observe(chartBox.value))
+onBeforeUnmount(() => observer.disconnect())
 const chartHeight = computed(() => {
-  if (viewport.value.width >= 768) return undefined
+  if (wide.value || !box.value.height) return undefined
   const chart = settings.instrument.chart
   const large = (chart.pixelWidth.lg * chart.height) / chart.width
-  // App header, title, answer panel, tab bar and the gaps between them.
-  return Math.max(260, Math.min(large, viewport.value.height - 350))
+  const byWidth = (box.value.width * chart.height) / chart.width
+  return Math.floor(Math.min(large, byWidth, box.value.height))
 })
 
 // A key set from one instrument means nothing on another.
@@ -85,8 +91,8 @@ function show(note: string) {
 </script>
 
 <template>
-  <div class="space-y-4 pb-44 md:pb-0">
-    <header class="flex items-center gap-3">
+  <div class="flex min-h-0 flex-1 flex-col gap-3 md:block md:space-y-4">
+    <header class="flex shrink-0 items-center gap-3">
       <div class="min-w-0 flex-1">
         <h1 class="text-2xl">What note is this?</h1>
         <p class="mt-0.5 text-sm text-ink-400">
@@ -106,23 +112,25 @@ function show(note: string) {
       </button>
     </header>
 
-    <div class="flex flex-col items-center gap-6 md:flex-row md:items-start md:gap-9">
-      <KeyChart
-        v-model:keys="selected"
-        v-model:partial="half"
-        interactive
-        size="lg"
-        :height="chartHeight"
-        :unavailable="unavailable"
-        class="shrink-0"
-      />
+    <div class="flex min-h-0 flex-1 flex-col gap-3 md:flex-row md:items-start md:gap-9">
+      <div ref="chartBox" class="flex min-h-0 flex-1 justify-center overflow-hidden md:flex-none md:overflow-visible">
+        <KeyChart
+          v-model:keys="selected"
+          v-model:partial="half"
+          interactive
+          size="lg"
+          :height="chartHeight"
+          :unavailable="unavailable"
+          class="shrink-0"
+        />
+      </div>
 
-      <!-- The answer. Pinned above the tab bar on a phone; beside the chart from `md` up. -->
+      <!-- The answer. Full width along the bottom on a phone, its height kept
+           steady so the chart doesn't jump; beside the chart from `md` up. -->
       <section
         aria-live="polite"
         aria-label="Result"
-        class="fixed inset-x-0 z-10 border-t border-ink-700 bg-ink-900 px-4 pt-3 pb-3.5 md:static md:w-full md:min-w-0 md:flex-1 md:border md:p-4"
-        style="bottom: calc(var(--safe-bottom) + var(--tabbar-height))"
+        class="-mx-4 min-h-36 shrink-0 border-t border-ink-700 bg-ink-900 px-4 pt-3 pb-3.5 md:mx-0 md:min-h-0 md:w-full md:min-w-0 md:flex-1 md:border md:p-4"
       >
         <div class="mx-auto max-w-3xl">
           <!-- Nothing pressed yet. -->

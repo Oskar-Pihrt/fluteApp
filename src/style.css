@@ -25,6 +25,11 @@
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
+/* Short phone screens, for the pages that must fit one screen without
+   scrolling. Declared in this order so `shorter:` wins over `short:`. */
+@custom-variant short (@media (max-height: 720px));
+@custom-variant shorter (@media (max-height: 600px));
+
 @layer base {
   html {
     /* Keeps the fixed tab bar clear of the Android/iOS gesture area. */

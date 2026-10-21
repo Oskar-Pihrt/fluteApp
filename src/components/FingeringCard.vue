@@ -5,8 +5,14 @@ import { getInstrument, REQUIREMENT_LABELS } from '@/instruments'
 
 /** One fingering rendered as a diagram plus its notation and caveats. */
 const props = withDefaults(
-  defineProps<{ fingering: Fingering; size?: 'sm' | 'md' | 'lg'; showKind?: boolean }>(),
-  { size: 'md', showKind: true },
+  defineProps<{
+    fingering: Fingering
+    size?: 'sm' | 'md' | 'lg'
+    /** A fixed chart height instead of `size`, for a card sized to the screen. */
+    height?: number
+    showKind?: boolean
+  }>(),
+  { size: 'md', height: undefined, showKind: true },
 )
 
 const KIND_LABELS: Record<Fingering['kind'], string> = {
@@ -23,11 +29,12 @@ const KIND_LABELS: Record<Fingering['kind'], string> = {
       :keys="props.fingering.keys"
       :partial="props.fingering.partial"
       :size="props.size"
+      :height="props.height"
       :instrument="getInstrument(props.fingering.instrument)"
       class="shrink-0"
     />
 
-    <div class="min-w-0 flex-1 space-y-2">
+    <div class="max-h-full min-w-0 flex-1 space-y-2 overflow-y-auto">
       <div v-if="props.showKind" class="flex flex-wrap items-center gap-2">
         <span
           class="rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
