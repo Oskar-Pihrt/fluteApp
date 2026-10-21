@@ -88,7 +88,7 @@ const immersive = computed(() => route.meta.immersive === true)
 
       <main
         class="mx-auto w-full md:max-w-4xl md:px-10"
-        :class="immersive ? '' : 'max-w-3xl px-4 pt-5 pb-28 md:py-9'"
+        :class="immersive ? '' : bare ? 'max-w-3xl px-4 pt-5 pb-6 md:py-9' : 'max-w-3xl px-4 pt-5 pb-28 md:py-9'"
       >
         <RouterView />
       </main>
