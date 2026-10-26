@@ -33,6 +33,18 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'Sheet', parent: 'sheets', immersive: true },
   },
   {
+    path: '/practice',
+    name: 'practice',
+    component: () => import('@/views/PracticeView.vue'),
+    meta: { title: 'Practice', fit: true },
+  },
+  {
+    path: '/practice/:exercise',
+    name: 'practiceSession',
+    component: () => import('@/views/PracticeSessionView.vue'),
+    meta: { title: 'Practice', parent: 'practice', immersive: true },
+  },
+  {
     path: '/ear',
     name: 'ear',
     component: () => import('@/views/EarTrainerView.vue'),

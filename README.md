@@ -27,6 +27,9 @@ their settings and sheets.
    engraved as real sheet music — pitches only, or with rhythm — next to the
    photo it came from. A piece can be rewritten for another instrument at the
    same sounding pitch. Saved on your device for later.
+4. **Practice.** A ten-minute daily training — long tones, notes with their
+   fingerings, and a scale — that listens through the microphone and moves on
+   when you play the right note. Finishing it keeps a daily streak going.
 
 Everything works offline. Nothing is uploaded anywhere, and there are no
 accounts — which means backups are your responsibility, so **Setup → Export
@@ -276,6 +279,36 @@ MusicXML import reads the whole part — durations, rests, ties, time and key
 changes, repeats, endings, D.C./D.S. and tempo. Detection from a photo reads
 pitches only (*Detect notes*, into a pitches-mode score whose measures follow
 the page's barlines) or with rhythm (*Detect with rhythm*, above).
+
+## Practice
+
+The Practice tab builds the day's training from the notes the instrument can
+play (`src/domain/practice.ts`): five long tones a semitone apart from the
+middle of the range (upwards one day, downwards the next), twenty notes drawn
+from the lower four fifths of the range and weighted toward notes you
+fumbled, and one scale, rotating through the keys by number of accidentals.
+The same day always gives the same plan. Finishing all three parts marks the
+day done; the streak counts back from today, or from yesterday while today's
+training is still to do. Progress, records and the streak live in
+localStorage (`src/stores/practice.ts`), records per instrument.
+
+Listening is plain Web Audio: the microphone feeds an `AnalyserNode`, and
+`src/domain/pitch.ts` runs YIN on each frame, converts the sounding pitch to
+the instrument's written note and reports the offset in cents. A note counts
+once it has been heard steadily for 150 ms. Browser echo cancellation, noise
+suppression and auto gain are switched off — they treat a held tone as noise.
+Every exercise also has a **Played — next** button, so a refused microphone or
+a noisy room never blocks the training. The scale's metronome is scheduled on
+the audio clock, and each note is marked on or off the beat (within a quarter
+beat).
+
+On Android the app declares `RECORD_AUDIO`; Capacitor's WebView asks for it
+the first time an exercise starts. The web app uses the browser's own prompt.
+
+## Design
+
+The look — tokens, type, the no-rounded-corners and one-screen rules, the
+components — is written down in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Not built yet
 
