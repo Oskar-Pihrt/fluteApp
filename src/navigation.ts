@@ -18,6 +18,12 @@ export const TABS = [
     icon: 'M5 3h9l5 5v13H5zM14 3v5h5',
   },
   {
+    name: 'practice',
+    label: 'Practice',
+    // A flame: the daily streak.
+    icon: 'M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.5 1.5-4 2.5-5 .3 1.6 1.2 2.5 2.5 3-.6-3 .2-5.6 0-8z',
+  },
+  {
     name: 'ear',
     label: 'Ear',
     // Headphones.
