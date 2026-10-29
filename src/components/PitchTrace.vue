@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { IN_TUNE_CENTS } from '@/domain/practice'
+import { IN_TUNE_CENTS, TUNING_RANGE_CENTS } from '@/domain/practice'
 
 /**
  * The held note's tuning over the last few seconds: a line of cents against
@@ -13,7 +13,7 @@ const props = withDefaults(defineProps<{ points: readonly { t: number; cents: nu
 
 const W = 300
 const H = 100
-const RANGE = 50
+const RANGE = TUNING_RANGE_CENTS
 const y = (cents: number) => H / 2 - (Math.max(-RANGE, Math.min(RANGE, cents)) / RANGE) * (H / 2 - 4)
 
 const segments = computed(() => {

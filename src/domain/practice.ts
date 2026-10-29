@@ -28,8 +28,13 @@ export interface Step {
 
 export const LONG_TONE_COUNT = 5
 export const LONG_TONE_SECONDS = 8
-/** A held note within this many cents counts as in tune. */
-export const IN_TUNE_CENTS = 15
+/**
+ * A held note within this many cents of the target counts as in tune —
+ * generous on purpose: long tones train a steady breath, not fine intonation.
+ */
+export const IN_TUNE_CENTS = 50
+/** How far either side of the target the tuning bar and trace show. */
+export const TUNING_RANGE_CENTS = 100
 export const NOTES_COUNT = 20
 
 // ── Days ────────────────────────────────────────────────────────────────────
