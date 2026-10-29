@@ -13,6 +13,7 @@ import {
   dayNumber,
   EXERCISE_TITLES,
   IN_TUNE_CENTS,
+  TUNING_RANGE_CENTS,
   keyId,
   LONG_TONE_SECONDS,
   longTones,
@@ -97,6 +98,12 @@ const chartHeight = computed(() => {
 // ── Per-step state ────────────────────────────────────────────────────────
 
 const stabiliser = new NoteStabiliser(150)
+/** Cents between what is heard and the target — across the note boundary, so a flat note still counts. */
+const targetOffset = computed(() => {
+  const heard = mic.heard.value
+  const current = step.value
+  return heard && current ? (heard.midi - current.midi) * 100 + heard.cents : null
+})
 /** Long tones: seconds held in tune, the longest unbroken run, and the trace. */
 const held = ref(0)
 const run = ref(0)
@@ -162,10 +169,11 @@ watch(
     if (exercise.value === 'longTones') {
       const dt = Math.min((now - lastFrame) / 1000, 0.1)
       lastFrame = now
-      const onNote = heard != null && heard.midi === current.midi
-      trace.value.push({ t: (now - stepStarted) / 1000, cents: onNote ? heard.cents : null })
+      const offset = targetOffset.value
+      const onNote = offset != null && Math.abs(offset) <= TUNING_RANGE_CENTS
+      trace.value.push({ t: (now - stepStarted) / 1000, cents: onNote ? offset : null })
       if (trace.value.length > 600) trace.value.splice(0, trace.value.length - 600)
-      if (onNote && Math.abs(heard.cents) <= IN_TUNE_CENTS) {
+      if (offset != null && Math.abs(offset) <= IN_TUNE_CENTS) {
         held.value += dt
         run.value += dt
         stepBest = Math.max(stepBest, run.value)
@@ -173,7 +181,7 @@ watch(
       } else run.value = 0
       if (held.value >= LONG_TONE_SECONDS) {
         practice.recordHold(settings.instrumentId, current.midi, stepBest)
-        success.value = { note: current.note, cents: heard?.cents ?? 0 }
+        success.value = { note: current.note, cents: offset ?? 0 }
         advanceTimer = window.setTimeout(advance, 600)
       }
       return
@@ -406,7 +414,7 @@ const micNote = computed(() => {
           <KeyChart v-if="fingering" :keys="fingering.keys" :partial="fingering.partial" :instrument="instrument" :height="chartHeight" />
         </section>
 
-        <TuningBar class="shrink-0" :cents="mic.heard.value && mic.heard.value.midi === step.midi ? mic.heard.value.cents : null" />
+        <TuningBar class="shrink-0" :cents="targetOffset != null && Math.abs(targetOffset) <= TUNING_RANGE_CENTS ? targetOffset : null" />
 
         <section class="flex min-h-0 flex-1 flex-col gap-2 border border-ink-700 bg-ink-900 p-3">
           <div class="flex shrink-0 justify-between text-xs text-ink-400">

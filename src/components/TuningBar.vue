@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { IN_TUNE_CENTS } from '@/domain/practice'
+import { IN_TUNE_CENTS, TUNING_RANGE_CENTS } from '@/domain/practice'
 
 /**
  * How far the held note is from true, as a marker on a flat-to-sharp bar with
- * the in-tune band shaded. ±50 cents spans the bar; beyond that is the next note.
+ * the in-tune band shaded. ±TUNING_RANGE_CENTS spans the bar.
  */
 const props = defineProps<{ cents: number | null }>()
 
-const position = (cents: number) => `${50 + Math.max(-50, Math.min(50, cents))}%`
+const R = TUNING_RANGE_CENTS
+const position = (cents: number) => `${50 + (Math.max(-R, Math.min(R, cents)) / R) * 50}%`
 const inTune = computed(() => props.cents != null && Math.abs(props.cents) <= IN_TUNE_CENTS)
 const label = computed(() => {
   if (props.cents == null) return '—'
@@ -17,7 +18,7 @@ const label = computed(() => {
 </script>
 
 <template>
-  <div class="space-y-1.5" role="meter" aria-valuemin="-50" aria-valuemax="50" :aria-valuenow="cents ?? undefined" :aria-label="`Tuning ${label}`">
+  <div class="space-y-1.5" role="meter" :aria-valuemin="-R" :aria-valuemax="R" :aria-valuenow="cents ?? undefined" :aria-label="`Tuning ${label}`">
     <div class="flex justify-between text-xs text-ink-400">
       <span>flat</span>
       <span class="font-semibold" :class="inTune ? 'text-accent-300' : cents == null ? 'text-ink-400' : 'text-amber-300'">{{ label }}</span>
