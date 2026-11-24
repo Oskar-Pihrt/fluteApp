@@ -6,8 +6,16 @@ import { exportBackup, importBackup, clearAll } from '@/lib/backup'
 import { loadDemoData } from '@/lib/seed'
 import { locale, setLocale, t } from '@/lib/i18n'
 import { todayISO } from '@/lib/dates'
+import { settings } from '@/lib/settings'
+import { enableReminders, isNative, testReminder } from '@/lib/native'
 
 const msg = ref('')
+const denied = ref(false)
+
+async function toggleReminders() {
+  if (settings.notify) { settings.notify = false; return }
+  denied.value = !(await enableReminders())
+}
 
 async function doExport() {
   const url = URL.createObjectURL(await exportBackup())
@@ -45,6 +53,25 @@ async function doClear() {
         <button class="chip flex-1 justify-center" :aria-pressed="locale === 'cs'" @click="setLocale('cs')">Čeština</button>
         <button class="chip flex-1 justify-center" :aria-pressed="locale === 'en'" @click="setLocale('en')">English</button>
       </div>
+    </section>
+
+    <section class="card space-y-3 p-4">
+      <h2 class="label !mb-0">{{ t('reminders') }}</h2>
+      <p v-if="!isNative" class="text-sm text-muted">🔔 {{ t('remindersWebOnly') }}</p>
+      <template v-else>
+        <button class="flex w-full items-center justify-between gap-3 text-left" role="switch" :aria-checked="settings.notify" @click="toggleReminders">
+          <span class="font-semibold">🔔 {{ t('remindersOn') }}</span>
+          <span class="relative h-7 w-12 shrink-0 rounded-full transition" :class="settings.notify ? 'bg-accent' : 'bg-white/15'">
+            <span class="absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all" :class="settings.notify ? 'left-6' : 'left-1'" />
+          </span>
+        </button>
+        <p v-if="denied" class="text-sm text-danger">{{ t('remindersDenied') }}</p>
+        <div v-if="settings.notify" class="flex items-center gap-3">
+          <label class="text-sm text-muted" for="rtime">{{ t('remindersTime') }}</label>
+          <input id="rtime" v-model="settings.time" type="time" class="input !w-32" />
+          <button class="btn btn-sm ml-auto" @click="testReminder">{{ t('notifyTest') }}</button>
+        </div>
+      </template>
     </section>
 
     <section class="card space-y-3 p-4">

@@ -4,7 +4,7 @@ import TabBar from './components/TabBar.vue'
 </script>
 
 <template>
-  <div class="mx-auto min-h-dvh w-full max-w-xl px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-40">
+  <div class="mx-auto min-h-dvh w-full max-w-xl px-4 pt-[max(1rem,var(--sat))] pb-40">
     <RouterView v-slot="{ Component, route }">
       <Transition name="page" mode="out-in">
         <component :is="Component" :key="route.path" />

@@ -14,7 +14,12 @@
   --font-display: ui-rounded, "SF Pro Rounded", "Avenir Next", "Nunito", system-ui, sans-serif;
 }
 
-:root { color-scheme: dark; }
+:root {
+  color-scheme: dark;
+  /* Capacitor (Android) injects --safe-area-inset-*; browsers use env(). */
+  --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}
 
 html, body { background: var(--color-bg); }
 

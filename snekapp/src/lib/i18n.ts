@@ -74,6 +74,10 @@ const en = {
   localOnly: 'Everything is stored on this device only. Export a backup now and then.',
   guide: 'Species care guide', guideSub: 'Typical temperatures, humidity and feeding',
   about: 'About', disclaimer: 'Care values are typical ranges and not veterinary advice. When in doubt, ask a reptile vet.',
+  // reminders
+  reminders: 'Reminders', remindersOn: 'Feeding and task reminders', remindersTime: 'Remind me at', remindersWebOnly: 'Reminders work in the Android app.',
+  remindersDenied: 'Notifications are blocked. Allow them for snekapp in Android settings.', notifyTest: 'Send a test', notifyTestBody: 'Reminders are working.',
+  notifyDue: 'Meal due today.', notifyOverdue: 'Still waiting for a meal.',
   // guide
   adultSize: 'Adult length', lifespan: 'Lifespan', hotspot: 'Warm spot', coolSide: 'Cool side', humidity: 'Humidity',
   feeding: 'Feeding', juvenile: 'young', adult: 'adult', level_1: 'Beginner friendly', level_2: 'Some experience', level_3: 'Experienced keepers',
@@ -126,6 +130,9 @@ const cs: Record<keyof typeof en, string> = {
   localOnly: 'Vše je uložené jen v tomhle zařízení. Čas od času si udělej zálohu.',
   guide: 'Průvodce péčí o druhy', guideSub: 'Typické teploty, vlhkost a krmení',
   about: 'O aplikaci', disclaimer: 'Hodnoty péče jsou typická rozmezí, ne veterinární rada. V případě pochybností se zeptej veterináře pro plazy.',
+  reminders: 'Připomínky', remindersOn: 'Připomínat krmení a úkoly', remindersTime: 'Připomenout v', remindersWebOnly: 'Připomínky fungují v aplikaci pro Android.',
+  remindersDenied: 'Notifikace jsou zablokované. Povol je pro snekapp v nastavení Androidu.', notifyTest: 'Poslat zkušební', notifyTestBody: 'Připomínky fungují.',
+  notifyDue: 'Dnes je čas na krmení.', notifyOverdue: 'Pořád čeká na krmení.',
   adultSize: 'Dospělá délka', lifespan: 'Délka života', hotspot: 'Teplé místo', coolSide: 'Chladná strana', humidity: 'Vlhkost',
   feeding: 'Krmení', juvenile: 'mladý', adult: 'dospělý', level_1: 'Vhodné pro začátečníky', level_2: 'Chce zkušenost', level_3: 'Pro zkušené chovatele',
   everyN: 'každých {d}', yrs: 'let',

@@ -14,7 +14,7 @@ const tabs: { to: string; icon: 'home' | 'snake' | 'calendar' | 'ruler' | 'more'
 </script>
 
 <template>
-  <nav class="fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(.75rem,env(safe-area-inset-bottom))]">
+  <nav class="fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(.75rem,var(--sab))]">
     <div class="flex w-full max-w-xl items-center justify-between rounded-full border border-line bg-surface/85 p-1.5 shadow-2xl shadow-black/60 backdrop-blur-xl">
       <RouterLink
         v-for="tab in tabs"

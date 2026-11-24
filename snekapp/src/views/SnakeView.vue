@@ -75,7 +75,7 @@ const fmtRange = (r: [number, number], u: string) => (r[1] ? `${r[0]}–${r[1]} 
 
 <template>
   <template v-if="snake && sp">
-    <header class="relative -mx-4 -mt-4 mb-5 overflow-hidden rounded-b-[2.25rem] border-b border-line px-4 pt-[max(1.5rem,env(safe-area-inset-top))] pb-8" :style="{ background: `radial-gradient(90% 120% at 50% 0%, ${snake.color}44, transparent 70%)` }">
+    <header class="relative -mx-4 -mt-4 mb-5 overflow-hidden rounded-b-[2.25rem] border-b border-line px-4 pt-[max(1.5rem,var(--sat))] pb-8" :style="{ background: `radial-gradient(90% 120% at 50% 0%, ${snake.color}44, transparent 70%)` }">
       <RouterLink to="/snakes" class="btn btn-sm !px-3"><Icon name="back" /> {{ t('snakes') }}</RouterLink>
       <div class="mt-3 flex flex-col items-center text-center">
         <Avatar :snake="snake" class="h-32 w-32" />
